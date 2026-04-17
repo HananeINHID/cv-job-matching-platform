@@ -1,4 +1,4 @@
-from rest_framework import status
+from rest_framework import status, generics
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -107,3 +107,65 @@ class CVProfileView(APIView):
             "error": "Validation failed",
             "details": serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UserProfileRetrieveUpdateView(generics.RetrieveUpdateAPIView):
+    """
+    Vue générique pour récupérer (GET) et mettre à jour (PUT/PATCH) 
+    le profil de l'utilisateur authentifié.
+    
+    Endpoint: /api/profile/me/
+    """
+    serializer_class = UserProfileSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        """
+        Retourne le profil de l'utilisateur connecté.
+        Crée automatiquement un profil vide s'il n'existe pas.
+        """
+        profile, created = UserProfile.objects.prefetch_related(
+            'experiences', 'formations'
+        ).get_or_create(
+            user=self.request.user,
+            defaults={
+                'nom': self.request.user.get_full_name() or self.request.user.username,
+                'email': self.request.user.email
+            }
+        )
+        return profile
+
+    def retrieve(self, request, *args, **kwargs):
+        """
+        GET /api/profile/me/
+        Récupère le profil complet avec expériences et formations.
+        """
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    def update(self, request, *args, **kwargs):
+        """
+        PUT/PATCH /api/profile/me/
+        Met à jour le profil avec les données imbriquées.
+        
+        Payload attendu:
+        {
+            "personal_info": {"nom": "...", "email": "...", "telephone": "...", "ville": "...", "titre": "..."},
+            "hard_skills": ["Python", "React"],
+            "soft_skills": ["Communication"],
+            "experiences": [{"poste": "...", "entreprise": "...", "debut": "...", "fin": "...", "description": "..."}],
+            "formations": [{"diplome": "...", "etablissement": "...", "annee": "...", "domaine": "..."}]
+        }
+        """
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+    def patch(self, request, *args, **kwargs):
+        """PATCH - Mise à jour partielle."""
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
