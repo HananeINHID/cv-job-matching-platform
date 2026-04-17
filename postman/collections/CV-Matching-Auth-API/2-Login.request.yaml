@@ -1,0 +1,37 @@
+$kind: http-request
+name: '2. Login'
+method: POST
+url: '{{base_url}}/api/token/'
+order: 2000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "username": "{{test_username}}",
+      "password": "{{test_password}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code is 200 OK", function () {
+          pm.response.to.have.status(200);
+      });
+
+      pm.test("Response contains JWT tokens", function () {
+          var jsonData = pm.response.json();
+          pm.expect(jsonData).to.have.property("access");
+          pm.expect(jsonData).to.have.property("refresh");
+      });
+
+      // Save tokens to environment for next requests
+      var jsonData = pm.response.json();
+      if (jsonData.access) {
+          pm.environment.set("access_token", jsonData.access);
+      }
+      if (jsonData.refresh) {
+          pm.environment.set("refresh_token", jsonData.refresh);
+      }
+    language: text/javascript
