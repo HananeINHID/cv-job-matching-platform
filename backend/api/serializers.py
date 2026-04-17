@@ -1,5 +1,103 @@
 from rest_framework import serializers
+from django.contrib.auth.models import User
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
+from django.core.mail import send_mail
+from django.conf import settings
 from .models import UserProfile, Experience, Education
+
+
+class UserRegistrationSerializer(serializers.ModelSerializer):
+    """
+    Serializer pour l'inscription d'un nouvel utilisateur avec vérification d'email.
+    Crée un utilisateur inactif (is_active=False) jusqu'à confirmation.
+    """
+    password = serializers.CharField(write_only=True, min_length=8)
+    password_confirm = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = User
+        fields = ['username', 'email', 'password', 'password_confirm']
+
+    def validate(self, data):
+        """Vérifie que les mots de passe correspondent."""
+        if data['password'] != data['password_confirm']:
+            raise serializers.ValidationError("Les mots de passe ne correspondent pas.")
+        return data
+
+    def validate_email(self, value):
+        """Vérifie que l'email n'est pas déjà utilisé."""
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Cet email est déjà utilisé.")
+        return value
+
+    def create(self, validated_data):
+        """
+        Crée un utilisateur inactif et envoie l'email de vérification.
+        """
+        validated_data.pop('password_confirm')
+        password = validated_data.pop('password')
+        
+        # Créer l'utilisateur avec is_active=False
+        user = User.objects.create_user(
+            username=validated_data['username'],
+            email=validated_data['email'],
+            password=password,
+            is_active=False  # Compte inactif jusqu'à vérification
+        )
+        
+        # Générer le token et l'UID
+        token = default_token_generator.make_token(user)
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        
+        # Construire le lien de vérification (vers le frontend)
+        verification_link = f"{settings.FRONTEND_URL}/verify-email/{uid}/{token}/"
+        
+        # Envoyer l'email
+        self.send_verification_email(user.email, verification_link)
+        
+        return user
+
+    def send_verification_email(self, email, verification_link):
+        """Envoie l'email de vérification à l'utilisateur."""
+        subject = 'Vérifiez votre compte CV Matching Platform'
+        message = f"""
+        Bonjour,
+
+        Merci de vous être inscrit sur CV Matching Platform.
+        Veuillez cliquer sur le lien ci-dessous pour vérifier votre email :
+
+        {verification_link}
+
+        Ce lien expire dans 24 heures.
+
+        Si vous n'avez pas créé de compte, ignorez cet email.
+
+        Cordialement,
+        L'équipe CV Matching Platform
+        """
+        
+        html_message = f"""
+        <html>
+        <body>
+            <h2>Bienvenue sur CV Matching Platform !</h2>
+            <p>Merci de vous être inscrit. Veuillez cliquer sur le bouton ci-dessous pour vérifier votre email :</p>
+            <p><a href="{verification_link}" style="background-color: #4CAF50; color: white; padding: 14px 20px; text-decoration: none; border-radius: 4px;">Vérifier mon email</a></p>
+            <p>Ou copiez ce lien dans votre navigateur :<br>{verification_link}</p>
+            <p><small>Ce lien expire dans 24 heures.</small></p>
+        </body>
+        </html>
+        """
+        
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[email],
+            html_message=html_message,
+            fail_silently=False,
+        )
 
 
 class ExperienceSerializer(serializers.ModelSerializer):
@@ -11,7 +109,7 @@ class ExperienceSerializer(serializers.ModelSerializer):
 
 
 class EducationSerializer(serializers.ModelSerializer):
-    """Serializer pour les formations (mappe 'formations' frontend)."""
+    """Serializer pour les formations."""
     
     class Meta:
         model = Education
@@ -21,7 +119,7 @@ class EducationSerializer(serializers.ModelSerializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     """
     Serializer principal pour le profil utilisateur.
-    Accepte et retourne la structure JSON exacte du frontend.
+    Accepte et retourne la structure JSON 
     """
     personal_info = serializers.SerializerMethodField()
     hard_skills = serializers.ListField(
@@ -50,7 +148,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'soft_skills', 'soft_skills_list',
             'experiences',
             'formations',
-            # Legacy fields (optionnels)
             'experience_years', 'sector', 'education_level',
             'job_title', 'languages', 'skills', 'certifications',
             'achievements', 'hobbies', 'interests', 'references', 'additional_info'

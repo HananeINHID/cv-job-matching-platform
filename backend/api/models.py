@@ -3,10 +3,10 @@ from django.contrib.auth.models import User
 
 
 class UserProfile(models.Model):
-    """Profil utilisateur synchronisé avec le formulaire CV frontend."""
+    """Profil utilisateur avec informations personnelles et compétences."""
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     
-    # ── Informations personnelles ──
+    # Informations personnelles
     nom = models.CharField(max_length=255, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
     telephone = models.CharField(max_length=50, blank=True, null=True)
@@ -14,13 +14,12 @@ class UserProfile(models.Model):
     titre = models.CharField(max_length=255, blank=True, null=True, 
                               help_text="Titre du poste recherché")
     
-    # ── Compétences (stockées en JSON ou texte séparé par virgules) ──
+    # Compétences stockées en JSON ou texte séparé par virgules
     hard_skills = models.TextField(blank=True, null=True, 
                                    help_text="Compétences techniques (format JSON ou CSV)")
     soft_skills = models.TextField(blank=True, null=True,
                                    help_text="Compétences humaines (format JSON ou CSV)")
-    
-    # ── Champs legacy (conservés pour compatibilité si besoin) ──
+
     experience_years = models.CharField(max_length=100, blank=True) 
     sector = models.CharField(max_length=255, blank=True)          
     education_level = models.CharField(max_length=100, blank=True) 
@@ -58,7 +57,7 @@ class Experience(models.Model):
 
 
 class Education(models.Model):
-    """Formation/Éducation liée à un profil utilisateur (mappe 'formations' frontend)."""
+    """Formation/Éducation liée à un profil utilisateur."""
     profile = models.ForeignKey(UserProfile, on_delete=models.CASCADE, 
                                 related_name='formations')
     diplome = models.CharField(max_length=255, blank=True, null=True)

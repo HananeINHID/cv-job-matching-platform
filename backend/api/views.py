@@ -1,10 +1,13 @@
 from rest_framework import status, generics
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.auth.models import User
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode
 from .models import UserProfile
-from .serializers import UserProfileSerializer
+from .serializers import UserProfileSerializer, UserRegistrationSerializer
 
 
 class UserProfileView(APIView):
@@ -169,3 +172,84 @@ class UserProfileRetrieveUpdateView(generics.RetrieveUpdateAPIView):
         """PATCH - Mise à jour partielle."""
         kwargs['partial'] = True
         return self.update(request, *args, **kwargs)
+
+
+class UserRegistrationView(APIView):
+    """
+    API View pour l'inscription d'un nouvel utilisateur avec vérification d'email.
+    Endpoint: /api/auth/register/
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        """
+        Crée un nouvel utilisateur inactif et envoie l'email de vérification.
+        
+        Payload attendu:
+        {
+            "username": "johndoe",
+            "email": "john@example.com",
+            "password": "motdepasse123",
+            "password_confirm": "motdepasse123"
+        }
+        """
+        serializer = UserRegistrationSerializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.save()
+            return Response({
+                "message": "Inscription réussie. Veuillez vérifier votre email pour activer votre compte.",
+                "email": user.email
+            }, status=status.HTTP_201_CREATED)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class EmailVerificationView(APIView):
+    """
+    API View pour vérifier l'email d'un utilisateur via token.
+    Endpoint: /api/auth/verify-email/<uidb64>/<token>/
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, uidb64, token):
+        """
+        Vérifie le token et active le compte utilisateur.
+        
+        Retourne 200 OK si succès, 400 Bad Request si token invalide.
+        """
+        try:
+            # Décoder l'UID
+            uid = force_str(urlsafe_base64_decode(uidb64))
+            user = User.objects.get(pk=uid)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            user = None
+
+        if user is not None and default_token_generator.check_token(user, token):
+            if user.is_active:
+                return Response({
+                    "message": "Votre email est déjà vérifié. Vous pouvez vous connecter."
+                }, status=status.HTTP_200_OK)
+            
+            # Activer le compte
+            user.is_active = True
+            user.save()
+            
+            # Créer automatiquement le profil utilisateur
+            UserProfile.objects.get_or_create(
+                user=user,
+                defaults={
+                    'nom': user.get_full_name() or user.username,
+                    'email': user.email
+                }
+            )
+            
+            return Response({
+                "message": "Email vérifié avec succès ! Votre compte est maintenant actif.",
+                "user_id": user.id,
+                "username": user.username
+            }, status=status.HTTP_200_OK)
+        
+        return Response({
+            "error": "Le lien de vérification est invalide ou a expiré.",
+            "detail": "Veuillez demander un nouvel email de vérification."
+        }, status=status.HTTP_400_BAD_REQUEST)
