@@ -10,7 +10,13 @@ db.sqlite3
 # Variables d'environnement
 .env
 
+# Migrations Django
+api/migrations/
+
 # Dossiers React (Frontend)
 frontend/node_modules/
 frontend/build/
 .DS_Store
+
+# Fichiers temporaires
+*.log
