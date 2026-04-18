@@ -1,0 +1,5 @@
+dataset_IASD_complet.csv
+__pycache__/
+*.pyc
+.env
+venv/
