@@ -4,8 +4,9 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.auth.models import User
 from django.contrib.auth.tokens import default_token_generator
-from django.utils.encoding import force_str
+from django.utils.encoding import force_str, DjangoUnicodeDecodeError
 from django.utils.http import urlsafe_base64_decode
+from django.db import transaction
 from .models import UserProfile
 from .serializers import UserProfileSerializer, UserRegistrationSerializer
 
@@ -44,9 +45,16 @@ class UserProfileView(APIView):
             serializer = UserProfileSerializer(data=data)
         
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        
+            try:
+                with transaction.atomic():
+                    serializer.save()
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            except Exception as e:
+                return Response(
+                    {"error": "Erreur lors de la sauvegarde.", "detail": str(e)},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def put(self, request):
@@ -97,15 +105,22 @@ class CVProfileView(APIView):
             serializer = UserProfileSerializer(data=data)
         
         if serializer.is_valid():
-            profile = serializer.save()
-            if not hasattr(profile, 'user'):
-                profile.user = request.user
-                profile.save()
-            return Response({
-                "message": "Profil enregistré avec succès",
-                "data": serializer.data
-            }, status=status.HTTP_200_OK)
-        
+            try:
+                with transaction.atomic():
+                    profile = serializer.save()
+                    if not hasattr(profile, 'user'):
+                        profile.user = request.user
+                        profile.save()
+                return Response({
+                    "message": "Profil enregistré avec succès",
+                    "data": serializer.data
+                }, status=status.HTTP_200_OK)
+            except Exception as e:
+                return Response(
+                    {"error": "Erreur lors de la sauvegarde.", "detail": str(e)},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
         return Response({
             "error": "Validation failed",
             "details": serializer.errors
@@ -180,7 +195,7 @@ class UserRegistrationView(APIView):
     Endpoint: /api/auth/register/
     """
     permission_classes = [AllowAny]
-
+    authentication_classes = [] 
     def post(self, request):
         """
         Crée un nouvel utilisateur inactif et envoie l'email de vérification.
@@ -209,7 +224,8 @@ class EmailVerificationView(APIView):
     API View pour vérifier l'email d'un utilisateur via token.
     Endpoint: /api/auth/verify-email/<uidb64>/<token>/
     """
-    permission_classes = [AllowAny]
+    permission_classes = [AllowAny]  # CORRIGÉ : AllowAny requis pour endpoint public
+    authentication_classes = []  # CORRIGÉ : désactiver authentification pour éviter 401 sur token invalide
 
     def get(self, request, uidb64, token):
         """
@@ -221,7 +237,8 @@ class EmailVerificationView(APIView):
             # Décoder l'UID
             uid = force_str(urlsafe_base64_decode(uidb64))
             user = User.objects.get(pk=uid)
-        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        except (TypeError, ValueError, OverflowError,
+                DjangoUnicodeDecodeError, User.DoesNotExist):
             user = None
 
         if user is not None and default_token_generator.check_token(user, token):
@@ -235,13 +252,19 @@ class EmailVerificationView(APIView):
             user.save()
             
             # Créer automatiquement le profil utilisateur
-            UserProfile.objects.get_or_create(
-                user=user,
-                defaults={
-                    'nom': user.get_full_name() or user.username,
-                    'email': user.email
-                }
-            )
+            try:
+                UserProfile.objects.get_or_create(
+                    user=user,
+                    defaults={
+                        'nom': user.get_full_name() or user.username,
+                        'email': user.email
+                    }
+                )
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Erreur création profil après vérification : {e}")
+                # L'utilisateur est quand même activé, ne pas bloquer
             
             return Response({
                 "message": "Email vérifié avec succès ! Votre compte est maintenant actif.",

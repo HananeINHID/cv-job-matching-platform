@@ -24,12 +24,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-q&=-s1tyo4m#2qely(++c!+9whkfpx^fcerfk40awmewml!r1*'
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'changeme-in-production')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DJANGO_DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 
 # Application definition
@@ -43,6 +43,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'api',
 ]
 
@@ -79,6 +81,13 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
+
+if not os.getenv('DB_PASSWORD'):
+    import warnings
+    warnings.warn(
+        "DB_PASSWORD non défini dans les variables d'environnement.",
+        RuntimeWarning
+    )
 
 DATABASES = {
     'default': {
@@ -133,20 +142,11 @@ REST_FRAMEWORK = {
 from datetime import timedelta
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
-    'ROTATE_REFRESH_TOKENS': False,
-    'BLACKLIST_AFTER_ROTATION': False,
-    'UPDATE_LAST_LOGIN': False,
-    'ALGORITHM': 'HS256',
-    'SIGNING_KEY': SECRET_KEY,
-    'VERIFYING_KEY': None,
-    'AUTH_HEADER_TYPES': ('Bearer',),
-    'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
-    'USER_ID_FIELD': 'id',
-    'USER_ID_CLAIM': 'user_id',
-    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
-    'TOKEN_TYPE_CLAIM': 'token_type',
+    'ROTATE_REFRESH_TOKENS': True,  
+    'BLACKLIST_AFTER_ROTATION': True, 
+    'AUTH_HEADER_TYPES': ('Bearer',)
 }
 
 LANGUAGE_CODE = 'en-us'
@@ -200,13 +200,13 @@ CORS_ALLOW_HEADERS = [
 
 # Email Configuration (SMTP)
 # https://docs.djangoproject.com/en/6.0/ref/settings/#email-backend
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'  # Modifier selon votre fournisseur SMTP
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend' 
+EMAIL_HOST = 'smtp.gmail.com'                                
+EMAIL_PORT = 587                                              
+EMAIL_USE_TLS = True                                          
+EMAIL_HOST_USER = 'contact.cvmatching@gmail.com'              
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')   
+DEFAULT_FROM_EMAIL = 'contact.cvmatching@gmail.com'
 
 # Frontend URL for email verification links
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')

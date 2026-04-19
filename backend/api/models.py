@@ -1,6 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
-
+from django.utils import timezone
 
 class UserProfile(models.Model):
     """Profil utilisateur avec informations personnelles et compétences."""
@@ -80,14 +80,24 @@ class JobOffer(models.Model):
     location = models.CharField(max_length=255)
     sector = models.CharField(max_length=255, blank=True)
     description = models.TextField()
-    
+
     required_skills = models.TextField(blank=True)
     required_education = models.TextField(blank=True)    
     required_experience = models.CharField(max_length=100, blank=True)
     required_languages = models.TextField(blank=True)    
     
     contract_type = models.CharField(max_length=100, blank=True)
-    posted_date = models.DateField(null=True, blank=True)
+    posted_date = models.DateField(null=True, blank=True, default=timezone.now)
+
+    created_by = models.ForeignKey(
+        User,  
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='job_offers'  
+    )
+    is_active = models.BooleanField(default=True)  
+    created_at = models.DateTimeField(auto_now_add=True)  
+    updated_at = models.DateTimeField(auto_now=True)  
 
     def __str__(self):
         return f"{self.title} - {self.company}"

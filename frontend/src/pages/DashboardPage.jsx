@@ -10,20 +10,27 @@ function DashboardPage() {
 
   // Charger le profil de l'utilisateur depuis le backend
   useEffect(() => {
-  const chargerProfil = async () => {
-    try {
-      const response = await API.get("/profile/");
-      setProfil(response.data);
-    } catch (error) {
-      // ── MODE TEST : on ne redirige pas vers login ──
-      // on laisse les données mock s'afficher
-      console.log("Backend pas prêt, utilisation des données mock");
-    } finally {
+    const token = localStorage.getItem("token")
+    if (!token) {
+      setProfil(null); 
       setLoading(false);
+      return; 
     }
-  };
-  chargerProfil();
-}, []);
+
+    const chargerProfil = async () => {
+      try {
+        const response = await API.get("/profile/");
+        setProfil(response.data);
+      } catch (error) {
+        // ── MODE TEST : on ne redirige pas vers login ──
+        // on laisse les données mock s'afficher
+        console.log("Backend pas prêt, utilisation des données mock");
+      } finally {
+        setLoading(false);
+      }
+    };
+    chargerProfil();
+  }, []);
 
   const handleRecherche = () => {
     // On envoie vers ResultsPage avec le mot-clé
