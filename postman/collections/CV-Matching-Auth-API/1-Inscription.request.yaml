@@ -1,0 +1,30 @@
+$kind: http-request
+name: '1. Inscription'
+method: POST
+url: '{{base_url}}/api/auth/register/'
+order: 1000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "username": "{{test_username}}",
+      "email": "{{test_email}}",
+      "password": "{{test_password}}",
+      "password_confirm": "{{test_password}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code is 201 Created", function () {
+          pm.response.to.have.status(201);
+      });
+
+      pm.test("Response contains success message", function () {
+          var jsonData = pm.response.json();
+          pm.expect(jsonData.message).to.include("Inscription");
+          pm.expect(jsonData.email).to.eql(pm.environment.get("test_email"));
+      });
+    language: text/javascript

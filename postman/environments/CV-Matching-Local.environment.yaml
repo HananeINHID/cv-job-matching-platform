@@ -1,0 +1,20 @@
+name: CV-Matching-Local
+values:
+  - key: base_url
+    value: 'http://localhost:8000'
+    enabled: true
+  - key: access_token
+    value: ''
+    enabled: true
+  - key: refresh_token
+    value: ''
+    enabled: true
+  - key: test_username
+    value: testuser_postman
+    enabled: true
+  - key: test_email
+    value: 'testuser@example.com'
+    enabled: true
+  - key: test_password
+    value: TestPass123!
+    enabled: true
