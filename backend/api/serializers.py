@@ -5,6 +5,7 @@ from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from django.core.mail import send_mail
 from django.conf import settings
+from django.db import transaction
 from .models import UserProfile, Experience, Education
 
 
@@ -28,7 +29,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
     def validate_email(self, value):
         """Vérifie que l'email n'est pas déjà utilisé."""
-        if User.objects.filter(email=value).exists():
+        if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError("Cet email est déjà utilisé.")
         return value
 
@@ -36,9 +37,15 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         """
         Crée un utilisateur inactif et envoie l'email de vérification.
         """
+        # Vérification d'unicité du username 
+        if User.objects.filter(username=validated_data['username']).exists():
+            raise serializers.ValidationError(
+                {"username": "Ce nom d'utilisateur est déjà pris."}
+            )
+
         validated_data.pop('password_confirm')
         password = validated_data.pop('password')
-        
+
         # Créer l'utilisateur avec is_active=False
         user = User.objects.create_user(
             username=validated_data['username'],
@@ -90,14 +97,19 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         </html>
         """
         
-        send_mail(
-            subject=subject,
-            message=message,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[email],
-            html_message=html_message,
-            fail_silently=False,
-        )
+        try:
+            send_mail(
+                subject=subject,
+                message=message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[email],
+                html_message=html_message,
+                fail_silently=False,
+            )
+        except Exception as e:
+            import logging 
+            logger = logging.getLogger(__name__) 
+            logger.error(f"Erreur envoi email de vérification : {e}")
 
 
 class ExperienceSerializer(serializers.ModelSerializer):
@@ -188,84 +200,86 @@ class UserProfileSerializer(serializers.ModelSerializer):
         """
         Crée un profil complet avec toutes les relations imbriquées.
         """
-        # Extraire les données imbriquées
-        experiences_data = validated_data.pop('experiences', [])
-        formations_data = validated_data.pop('formations', [])
-        hard_skills_list = validated_data.pop('hard_skills', [])
-        soft_skills_list = validated_data.pop('soft_skills', [])
-        
-        # Gérer personal_info si fourni dans le payload
-        personal_info = self.initial_data.get('personal_info', {})
-        if personal_info:
-            validated_data['nom'] = personal_info.get('nom', validated_data.get('nom'))
-            validated_data['email'] = personal_info.get('email', validated_data.get('email'))
-            validated_data['telephone'] = personal_info.get('telephone', validated_data.get('telephone'))
-            validated_data['ville'] = personal_info.get('ville', validated_data.get('ville'))
-            validated_data['titre'] = personal_info.get('titre', validated_data.get('titre'))
-        
-        # Sérialiser les skills en JSON
-        import json
-        if hard_skills_list:
-            validated_data['hard_skills'] = json.dumps(hard_skills_list)
-        if soft_skills_list:
-            validated_data['soft_skills'] = json.dumps(soft_skills_list)
-        
-        # Créer le profil
-        profile = UserProfile.objects.create(**validated_data)
-        
-        # Créer les expériences associées
-        for exp_data in experiences_data:
-            Experience.objects.create(profile=profile, **exp_data)
-        
-        # Créer les formations associées
-        for form_data in formations_data:
-            Education.objects.create(profile=profile, **form_data)
-        
-        return profile
+        with transaction.atomic(): 
+            # Extraire les données imbriquées
+            experiences_data = validated_data.pop('experiences', [])
+            formations_data = validated_data.pop('formations', [])
+            hard_skills_list = validated_data.pop('hard_skills', [])
+            soft_skills_list = validated_data.pop('soft_skills', [])
+
+            # Gérer personal_info si fourni dans le payload
+            personal_info = self.initial_data.get('personal_info', {})
+            if personal_info:
+                validated_data['nom'] = personal_info.get('nom', validated_data.get('nom'))
+                validated_data['email'] = personal_info.get('email', validated_data.get('email'))
+                validated_data['telephone'] = personal_info.get('telephone', validated_data.get('telephone'))
+                validated_data['ville'] = personal_info.get('ville', validated_data.get('ville'))
+                validated_data['titre'] = personal_info.get('titre', validated_data.get('titre'))
+
+            # Sérialiser les skills en JSON
+            import json
+            if hard_skills_list:
+                validated_data['hard_skills'] = json.dumps(hard_skills_list)
+            if soft_skills_list:
+                validated_data['soft_skills'] = json.dumps(soft_skills_list)
+
+            # Créer le profil
+            profile = UserProfile.objects.create(**validated_data)
+
+            # Créer les expériences associées
+            for exp_data in experiences_data:
+                Experience.objects.create(profile=profile, **exp_data)
+
+            # Créer les formations associées
+            for form_data in formations_data:
+                Education.objects.create(profile=profile, **form_data)
+
+            return profile
 
     def update(self, instance, validated_data):
         """
         Met à jour un profil complet avec toutes les relations imbriquées.
         Gère: personal_info, hard_skills, soft_skills, experiences, formations
         """
-        # Extraire les données imbriquées
-        experiences_data = validated_data.pop('experiences', None)
-        formations_data = validated_data.pop('formations', None)
-        hard_skills_list = validated_data.pop('hard_skills', None)
-        soft_skills_list = validated_data.pop('soft_skills', None)
-        
-        # Gérer personal_info
-        personal_info = self.initial_data.get('personal_info', {})
-        if personal_info:
-            instance.nom = personal_info.get('nom', instance.nom)
-            instance.email = personal_info.get('email', instance.email)
-            instance.telephone = personal_info.get('telephone', instance.telephone)
-            instance.ville = personal_info.get('ville', instance.ville)
-            instance.titre = personal_info.get('titre', instance.titre)
-        
-        # Mettre à jour les champs simples
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        
-        # Mettre à jour les skills (sérialisés en JSON)
-        import json
-        if hard_skills_list is not None:
-            instance.hard_skills = json.dumps(hard_skills_list) if hard_skills_list else ''
-        if soft_skills_list is not None:
-            instance.soft_skills = json.dumps(soft_skills_list) if soft_skills_list else ''
-        
-        instance.save()
-        
-        # Mettre à jour les expériences (suppression et recréation pour simplifier)
-        if experiences_data is not None:
-            instance.experiences.all().delete()
-            for exp_data in experiences_data:
-                Experience.objects.create(profile=instance, **exp_data)
-        
-        # Mettre à jour les formations (suppression et recréation pour simplifier)
-        if formations_data is not None:
-            instance.formations.all().delete()
-            for form_data in formations_data:
-                Education.objects.create(profile=instance, **form_data)
-        
-        return instance
+        with transaction.atomic():
+            # Extraire les données imbriquées
+            experiences_data = validated_data.pop('experiences', None)
+            formations_data = validated_data.pop('formations', None)
+            hard_skills_list = validated_data.pop('hard_skills', None)
+            soft_skills_list = validated_data.pop('soft_skills', None)
+
+            # Gérer personal_info
+            personal_info = self.initial_data.get('personal_info', {})
+            if personal_info:
+                instance.nom = personal_info.get('nom', instance.nom)
+                instance.email = personal_info.get('email', instance.email)
+                instance.telephone = personal_info.get('telephone', instance.telephone)
+                instance.ville = personal_info.get('ville', instance.ville)
+                instance.titre = personal_info.get('titre', instance.titre)
+
+            # Mettre à jour les champs simples
+            for attr, value in validated_data.items():
+                setattr(instance, attr, value)
+
+            # Mettre à jour les skills (sérialisés en JSON)
+            import json
+            if hard_skills_list is not None:
+                instance.hard_skills = json.dumps(hard_skills_list) if hard_skills_list else ''
+            if soft_skills_list is not None:
+                instance.soft_skills = json.dumps(soft_skills_list) if soft_skills_list else ''
+
+            instance.save()
+
+            # Mettre à jour les expériences (suppression et recréation pour simplifier)
+            if experiences_data is not None:
+                instance.experiences.all().delete()
+                for exp_data in experiences_data:
+                    Experience.objects.create(profile=instance, **exp_data)
+
+            # Mettre à jour les formations (suppression et recréation pour simplifier)
+            if formations_data is not None:
+                instance.formations.all().delete()
+                for form_data in formations_data:
+                    Education.objects.create(profile=instance, **form_data)
+
+            return instance
