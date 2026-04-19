@@ -31,9 +31,10 @@ function RegisterPage() {
 
     try {
       await API.post("/auth/register/", {
-        name: nom,
+        username: nom,
         email,
         password,
+        password_confirm: confirm
       });
 
       setSucces(true);
@@ -41,7 +42,17 @@ function RegisterPage() {
       setTimeout(() => navigate("/login"), 2000);
 
     } catch (error) {
-      setErreur("Erreur lors de l'inscription. Cet email est peut-être déjà utilisé.");
+      const data = error.response?.data;
+      if (data) {
+        // Affiche le premier message d'erreur renvoyé par Django
+        const premierChamp = Object.keys(data)[0];
+        const premierMessage = Array.isArray(data[premierChamp])
+          ? data[premierChamp][0]
+          : data[premierChamp];
+        setErreur(premierMessage);
+      } else {
+        setErreur("Erreur réseau. Vérifiez votre connexion.");
+      }
     }
   };
 
