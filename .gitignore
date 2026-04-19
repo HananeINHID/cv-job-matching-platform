@@ -1,3 +1,10 @@
+HEAD
+dataset_IASD_complet.csv
+__pycache__/
+*.pyc
+.env
+venv/
+
 # Environnements virtuels Python (Backend & Scraping)
 venv/
 env/
@@ -20,3 +27,4 @@ frontend/build/
 
 # Fichiers temporaires
 *.log
+ 2837e127b9ae2343c6dde73fee56029c5eb5cb7a
