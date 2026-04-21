@@ -95,27 +95,31 @@ function CVFormPage() {
     return;
   }
 
-  // ── MODE TEST (sans backend) ──
-  navigate("/dashboard");
+  setLoading(true);
+  try {
+    // Filtre les expériences et formations vides
+    const experiencesFiltrees = experiences.filter(
+      (exp) => exp.poste || exp.entreprise
+    );
+    const formationsFiltrees = formations.filter(
+      (form) => form.diplome || form.etablissement
+    );
 
-  // ── MODE PRODUCTION (décommenter quand Hanane finit le backend) ──
-  // setLoading(true);
-  // try {
-  //   await API.post("/profile/cv/", {
-  //     personal_info: { nom, email, telephone, ville, titre },
-  //     hard_skills: hardSkills,
-  //     soft_skills: softSkills,
-  //     experiences,
-  //     formations,
-  //   });
-  //   navigate("/dashboard");
-  // } catch (error) {
-  //   setErreur("Erreur lors de l'enregistrement. Réessayez.");
-  // } finally {
-  //   setLoading(false);
-  // }
+    await API.post("/profile/cv/", {
+      personal_info: { nom, email, telephone, ville, titre },
+      hard_skills: hardSkills,
+      soft_skills: softSkills,
+      experiences: experiencesFiltrees,
+      formations: formationsFiltrees,
+    });
+    navigate("/dashboard");
+  } catch (error) {
+    console.log("Erreur CV:", error.response?.data);
+    setErreur("Erreur: " + JSON.stringify(error.response?.data));
+  } finally {
+    setLoading(false);
+  }
 };
-
   return (
     <div style={styles.page}>
       <div style={styles.container}>
@@ -136,13 +140,13 @@ function CVFormPage() {
               <label style={styles.label}>Nom complet *</label>
               <input style={styles.input} value={nom}
                 onChange={(e) => setNom(e.target.value)}
-                placeholder="Rachid Alami" />
+                placeholder="Nom" />
             </div>
             <div style={styles.groupe}>
               <label style={styles.label}>Email *</label>
               <input style={styles.input} type="email" value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="rachid@email.com" />
+                placeholder="xxxx@gmail.com" />
             </div>
             <div style={styles.groupe}>
               <label style={styles.label}>Téléphone</label>
@@ -154,7 +158,7 @@ function CVFormPage() {
               <label style={styles.label}>Ville</label>
               <input style={styles.input} value={ville}
                 onChange={(e) => setVille(e.target.value)}
-                placeholder="Casablanca" />
+                placeholder="xxxxxx" />
             </div>
           </div>
 
