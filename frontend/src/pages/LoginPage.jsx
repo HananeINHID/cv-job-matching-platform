@@ -1,164 +1,250 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import API from "../services/api";
 
 function LoginPage() {
-  // Ces variables retiennent ce que l'utilisateur tape
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
   const [erreur, setErreur]     = useState("");
+  const [darkMode, setDarkMode] = useState(false);
 
-  const navigate = useNavigate(); // pour changer de page
+  const navigate = useNavigate();
+
+  // Détecte le mode système au démarrage
+  useEffect(() => {
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    setDarkMode(prefersDark);
+  }, []);
 
   const handleLogin = async () => {
-  setErreur("");
+    setErreur("");
+    if (!email || !password) {
+      setErreur("Veuillez remplir tous les champs.");
+      return;
+    }
+    try {
+      const response = await API.post("/token/", {
+        username: email,
+        password: password,
+      });
+      localStorage.setItem("token", response.data.access);
+      localStorage.setItem("refresh_token", response.data.refresh);
+      navigate("/dashboard");
+    } catch (error) {
+      setErreur("Nom d'utilisateur ou mot de passe incorrect.");
+    }
+  };
 
-  if (!email || !password) {
-    setErreur("Veuillez remplir tous les champs.");
-    return;
-  }
-
-  // ── MODE TEST (sans backend) ──
-  // On simule une connexion réussie
-  localStorage.setItem("token", "token-test-temporaire");
-  navigate("/dashboard");
-
-  // ── MODE PRODUCTION () ──
-  // try {
-  //   const response = await API.post("/auth/login/", { email, password });
-  //   localStorage.setItem("token", response.data.access);
-  //   navigate("/dashboard");
-  // } catch (error) {
-  //   setErreur("Email ou mot de passe incorrect.");
-  // }
-};
+  const dm = darkMode;
 
   return (
-    <div style={styles.page}>
-      <div style={styles.card}>
+    <div style={{
+      minHeight: "100vh",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      background: dm
+        ? "linear-gradient(135deg, #0f0c29, #302b63, #24243e)"
+        : "linear-gradient(135deg, #e0c3fc, #8ec5fc, #d4fc79)",
+      transition: "background 0.5s ease",
+      padding: "1rem",
+    }}>
 
-        <h1 style={styles.titre}>CV Matching</h1>
-        <p style={styles.sousTitre}>Connectez-vous à votre compte</p>
+      {/* Bouton dark/light mode */}
+      <button
+        onClick={() => setDarkMode(!dm)}
+        style={{
+          position: "fixed",
+          top: "20px",
+          right: "20px",
+          width: "44px",
+          height: "44px",
+          borderRadius: "50%",
+          border: "none",
+          backgroundColor: dm ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.15)",
+          fontSize: "20px",
+          cursor: "pointer",
+          backdropFilter: "blur(10px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {dm ? "☀️" : "🌙"}
+      </button>
 
-        {/* Message d'erreur */}
-        {erreur && <p style={styles.erreur}>{erreur}</p>}
+      {/* Carte principale */}
+      <div style={{
+        backgroundColor: dm ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.75)",
+        backdropFilter: "blur(20px)",
+        padding: "2.5rem",
+        borderRadius: "24px",
+        border: dm ? "1px solid rgba(255,255,255,0.15)" : "1px solid rgba(255,255,255,0.6)",
+        width: "100%",
+        maxWidth: "420px",
+        boxShadow: dm
+          ? "0 25px 50px rgba(0,0,0,0.5)"
+          : "0 25px 50px rgba(100,100,200,0.2)",
+      }}>
 
-        {/* Champ email */}
-        <div style={styles.groupe}>
-          <label style={styles.label}>Email</label>
+        {/* Logo / Titre */}
+        <div style={{ textAlign: "center", marginBottom: "2rem" }}>
+          <div style={{
+            width: "60px",
+            height: "60px",
+            borderRadius: "16px",
+            background: "linear-gradient(135deg, #667eea, #764ba2)",
+            margin: "0 auto 1rem",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "28px",
+          }}>
+            📄
+          </div>
+          <h1 style={{
+            fontSize: "26px",
+            fontWeight: "700",
+            background: "linear-gradient(135deg, #667eea, #764ba2)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            margin: 0,
+          }}>
+            CV Matching
+          </h1>
+          <p style={{
+            fontSize: "14px",
+            color: dm ? "rgba(255,255,255,0.5)" : "#888",
+            marginTop: "6px",
+          }}>
+            Connectez-vous à votre compte
+          </p>
+        </div>
+
+        {/* Message erreur */}
+        {erreur && (
+          <div style={{
+            backgroundColor: dm ? "rgba(220,50,50,0.2)" : "#FCEBEB",
+            border: "1px solid rgba(220,50,50,0.3)",
+            color: dm ? "#ff8080" : "#A32D2D",
+            padding: "12px",
+            borderRadius: "12px",
+            fontSize: "13px",
+            marginBottom: "20px",
+            textAlign: "center",
+          }}>
+            {erreur}
+          </div>
+        )}
+
+        {/* Champ username */}
+        <div style={{ marginBottom: "16px" }}>
+          <label style={{
+            display: "block",
+            fontSize: "13px",
+            fontWeight: "500",
+            marginBottom: "8px",
+            color: dm ? "rgba(255,255,255,0.7)" : "#444",
+          }}>
+            Nom d'utilisateur
+          </label>
           <input
-            type="email"
-            placeholder="exemple@email.com"
+            type="text"
+            placeholder="votre_username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            style={styles.input}
+            onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+            style={{
+              width: "100%",
+              padding: "12px 16px",
+              borderRadius: "12px",
+              border: dm
+                ? "1px solid rgba(255,255,255,0.15)"
+                : "1px solid rgba(102,126,234,0.3)",
+              backgroundColor: dm ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.8)",
+              color: dm ? "white" : "#333",
+              fontSize: "14px",
+              boxSizing: "border-box",
+              outline: "none",
+            }}
           />
         </div>
 
         {/* Champ mot de passe */}
-        <div style={styles.groupe}>
-          <label style={styles.label}>Mot de passe</label>
+        <div style={{ marginBottom: "24px" }}>
+          <label style={{
+            display: "block",
+            fontSize: "13px",
+            fontWeight: "500",
+            marginBottom: "8px",
+            color: dm ? "rgba(255,255,255,0.7)" : "#444",
+          }}>
+            Mot de passe
+          </label>
           <input
             type="password"
             placeholder="••••••••"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            style={styles.input}
+            onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+            style={{
+              width: "100%",
+              padding: "12px 16px",
+              borderRadius: "12px",
+              border: dm
+                ? "1px solid rgba(255,255,255,0.15)"
+                : "1px solid rgba(102,126,234,0.3)",
+              backgroundColor: dm ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.8)",
+              color: dm ? "white" : "#333",
+              fontSize: "14px",
+              boxSizing: "border-box",
+              outline: "none",
+            }}
           />
         </div>
 
         {/* Bouton connexion */}
-        <button onClick={handleLogin} style={styles.bouton}>
-          Se connecter
+        <button
+          onClick={handleLogin}
+          style={{
+            width: "100%",
+            padding: "14px",
+            background: "linear-gradient(135deg, #667eea, #764ba2)",
+            color: "white",
+            border: "none",
+            borderRadius: "12px",
+            fontSize: "15px",
+            fontWeight: "600",
+            cursor: "pointer",
+            letterSpacing: "0.5px",
+            transition: "opacity 0.2s",
+          }}
+          onMouseEnter={(e) => e.target.style.opacity = "0.9"}
+          onMouseLeave={(e) => e.target.style.opacity = "1"}
+        >
+          Se connecter →
         </button>
 
-        {/* Lien vers inscription */}
-        <p style={styles.lienTexte}>
+        {/* Lien inscription */}
+        <p style={{
+          textAlign: "center",
+          fontSize: "13px",
+          marginTop: "20px",
+          color: dm ? "rgba(255,255,255,0.5)" : "#888",
+        }}>
           Pas encore de compte ?{" "}
-          <Link to="/register" style={styles.lien}>S'inscrire</Link>
+          <Link to="/register" style={{
+            color: "#667eea",
+            textDecoration: "none",
+            fontWeight: "600",
+          }}>
+            S'inscrire
+          </Link>
         </p>
 
       </div>
     </div>
   );
 }
-
-// Styles simples en JS
-const styles = {
-  page: {
-    minHeight: "100vh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#f5f5f5",
-  },
-  card: {
-    backgroundColor: "white",
-    padding: "2rem",
-    borderRadius: "12px",
-    border: "0.5px solid #ddd",
-    width: "100%",
-    maxWidth: "400px",
-  },
-  titre: {
-    fontSize: "24px",
-    fontWeight: "500",
-    textAlign: "center",
-    marginBottom: "4px",
-  },
-  sousTitre: {
-    fontSize: "14px",
-    color: "#888",
-    textAlign: "center",
-    marginBottom: "24px",
-  },
-  groupe: {
-    marginBottom: "16px",
-  },
-  label: {
-    display: "block",
-    fontSize: "13px",
-    marginBottom: "6px",
-    color: "#444",
-  },
-  input: {
-    width: "100%",
-    padding: "10px",
-    borderRadius: "8px",
-    border: "1px solid #ddd",
-    fontSize: "14px",
-    boxSizing: "border-box",
-  },
-  bouton: {
-    width: "100%",
-    padding: "12px",
-    backgroundColor: "#534AB7",
-    color: "white",
-    border: "none",
-    borderRadius: "8px",
-    fontSize: "15px",
-    cursor: "pointer",
-    marginTop: "8px",
-  },
-  erreur: {
-    backgroundColor: "#FCEBEB",
-    color: "#A32D2D",
-    padding: "10px",
-    borderRadius: "8px",
-    fontSize: "13px",
-    marginBottom: "16px",
-  },
-  lienTexte: {
-    textAlign: "center",
-    fontSize: "13px",
-    marginTop: "16px",
-    color: "#666",
-  },
-  lien: {
-    color: "#534AB7",
-    textDecoration: "none",
-    fontWeight: "500",
-  },
-};
 
 export default LoginPage;
