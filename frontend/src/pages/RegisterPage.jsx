@@ -38,7 +38,7 @@ function RegisterPage() {
       });
 
       setSucces(true);
-      // Après 2 secondes → aller vers login
+      // Redirection vers login après 2 secondes
       setTimeout(() => navigate("/login"), 2000);
 
     } catch (error) {
