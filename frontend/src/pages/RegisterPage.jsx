@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import API from "../services/api";
 
@@ -9,34 +9,50 @@ function RegisterPage() {
   const [confirm, setConfirm]   = useState("");
   const [erreur, setErreur]     = useState("");
   const [succes, setSucces]     = useState(false);
-
+  const [darkMode, setDarkMode] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    setDarkMode(window.matchMedia("(prefers-color-scheme: dark)").matches);
+  }, []);
+
+  const c = {
+    pageBg:      darkMode ? "#0D1B2A" : "#F0F4F8",
+    cardBg:      darkMode ? "#1A2B3C" : "#FFFFFF",
+    cardBorder:  darkMode ? "#1E3A5F" : "#E2EAF4",
+    cardShadow:  darkMode ? "0 20px 60px rgba(0,0,0,0.5)" : "0 20px 60px rgba(14,90,130,0.1)",
+    textePrimaire:   darkMode ? "#E8F1F8" : "#1A2B3C",
+    texteSecondaire: darkMode ? "#7A9BB5" : "#5A7184",
+    texteLabel:      darkMode ? "#A8C4D8" : "#3D5A73",
+    inputBg:     darkMode ? "#0F2030" : "#F7FAFD",
+    inputBorder: darkMode ? "#1E3A5F" : "#C8DCF0",
+    inputTexte:  darkMode ? "#E8F1F8" : "#1A2B3C",
+    toggleBg:    darkMode ? "#1E3A5F" : "#E2EAF4",
+    accent:      "#FF6B47",
+    boutonBg:    "linear-gradient(135deg, #0E8C8C, #0A6B7C)",
+    successBg:   darkMode ? "rgba(14,140,100,0.15)" : "#F0FFF8",
+    successBorder: "rgba(14,140,100,0.3)",
+    successTexte: darkMode ? "#50E0A0" : "#0A6B4A",
+    erreurBg:    darkMode ? "rgba(220,80,60,0.15)" : "#FFF0EE",
+    erreurBorder:"rgba(220,80,60,0.3)",
+    erreurTexte: darkMode ? "#FF9080" : "#C0392B",
+  };
 
   const handleRegister = async () => {
     setErreur("");
-
-    // Vérification simple avant d'envoyer
     if (!nom || !email || !password || !confirm) {
-      setErreur("Veuillez remplir tous les champs.");
-      return;
+      setErreur("Veuillez remplir tous les champs."); return;
     }
     if (password !== confirm) {
-      setErreur("Les mots de passe ne correspondent pas.");
-      return;
+      setErreur("Les mots de passe ne correspondent pas."); return;
     }
-    if (password.length < 6) {
-      setErreur("Le mot de passe doit contenir au moins 6 caractères.");
-      return;
+    if (password.length < 8) {
+      setErreur("Minimum 8 caractères."); return;
     }
-
     try {
       await API.post("/auth/register/", {
-        username: nom,
-        email,
-        password,
-        password_confirm: confirm
+        username: nom, email, password, password_confirm: confirm
       });
-
       setSucces(true);
       // Redirection vers login après 2 secondes
       setTimeout(() => navigate("/login"), 2000);
@@ -44,180 +60,142 @@ function RegisterPage() {
     } catch (error) {
       const data = error.response?.data;
       if (data) {
-        // Affiche le premier message d'erreur renvoyé par Django
-        const premierChamp = Object.keys(data)[0];
-        const premierMessage = Array.isArray(data[premierChamp])
-          ? data[premierChamp][0]
-          : data[premierChamp];
-        setErreur(premierMessage);
+        const champ = Object.keys(data)[0];
+        const msg = Array.isArray(data[champ]) ? data[champ][0] : data[champ];
+        setErreur(msg);
       } else {
         setErreur("Erreur réseau. Vérifiez votre connexion.");
       }
     }
   };
 
+  const inputStyle = {
+    width: "100%",
+    padding: "12px 16px",
+    borderRadius: "12px",
+    border: `1.5px solid ${c.inputBorder}`,
+    backgroundColor: c.inputBg,
+    color: c.inputTexte,
+    fontSize: "14px",
+    boxSizing: "border-box",
+    outline: "none",
+  };
+
+  const labelStyle = {
+    display: "block",
+    fontSize: "13px",
+    fontWeight: "600",
+    color: c.texteLabel,
+    marginBottom: "8px",
+  };
+
   return (
-    <div style={styles.page}>
-      <div style={styles.card}>
+    <div style={{
+      minHeight: "100vh", width: "100vw",
+      position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      backgroundColor: c.pageBg, overflowY: "auto", padding: "1rem",
+    }}>
 
-        <h1 style={styles.titre}>Créer un compte</h1>
-        <p style={styles.sousTitre}>Rejoignez CV Matching</p>
+      <button onClick={() => setDarkMode(!darkMode)} style={{
+        position: "fixed", top: "20px", right: "20px",
+        width: "42px", height: "42px", borderRadius: "50%",
+        border: `1px solid ${c.cardBorder}`, backgroundColor: c.toggleBg,
+        fontSize: "18px", cursor: "pointer", zIndex: 100,
+      }}>
+        {darkMode ? "☀️" : "🌙"}
+      </button>
 
-        {/* Message succès */}
-        {succes && (
-          <p style={styles.succes}>
-            Compte créé avec succès ! Redirection...
+      <div style={{
+        backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`,
+        borderRadius: "20px", padding: "2.5rem", width: "100%", maxWidth: "420px",
+        boxShadow: c.cardShadow, margin: "1rem",
+      }}>
+
+        {/* En-tête */}
+        <div style={{ textAlign: "center", marginBottom: "2rem" }}>
+          <div style={{
+            width: "56px", height: "56px", borderRadius: "14px",
+            background: c.boutonBg, margin: "0 auto 1rem",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: "26px", boxShadow: "0 8px 20px rgba(14,140,140,0.3)",
+          }}>✨</div>
+          <h1 style={{ fontSize: "24px", fontWeight: "700", color: c.textePrimaire, margin: "0 0 6px 0" }}>
+            Créer un compte
+          </h1>
+          <p style={{ fontSize: "14px", color: c.texteSecondaire, margin: 0 }}>
+            Rejoignez CV Matching
           </p>
+        </div>
+
+        {/* Succès */}
+        {succes && (
+          <div style={{
+            backgroundColor: c.successBg, border: `1px solid ${c.successBorder}`,
+            color: c.successTexte, padding: "12px 16px", borderRadius: "12px",
+            fontSize: "13px", marginBottom: "20px", textAlign: "center",
+          }}>
+            ✅ Compte créé ! Redirection vers le login...
+          </div>
         )}
 
-        {/* Message erreur */}
-        {erreur && <p style={styles.erreur}>{erreur}</p>}
+        {/* Erreur */}
+        {erreur && (
+          <div style={{
+            backgroundColor: c.erreurBg, border: `1px solid ${c.erreurBorder}`,
+            color: c.erreurTexte, padding: "12px 16px", borderRadius: "12px",
+            fontSize: "13px", marginBottom: "20px",
+          }}>
+            ⚠️ {erreur}
+          </div>
+        )}
 
-        {/* Nom complet */}
-        <div style={styles.groupe}>
-          <label style={styles.label}>Nom complet</label>
-          <input
-            type="text"
-            placeholder="Rachid Alami"
-            value={nom}
-            onChange={(e) => setNom(e.target.value)}
-            style={styles.input}
-          />
-        </div>
+        {/* Champs */}
+        {[
+          { label: "Nom d'utilisateur", val: nom, set: setNom, type: "text", ph: "rachid_alami" },
+          { label: "Email", val: email, set: setEmail, type: "email", ph: "rachid@email.com" },
+          { label: "Mot de passe", val: password, set: setPassword, type: "password", ph: "••••••••" },
+          { label: "Confirmer le mot de passe", val: confirm, set: setConfirm, type: "password", ph: "••••••••" },
+        ].map(({ label, val, set, type, ph }) => (
+          <div key={label} style={{ marginBottom: "16px" }}>
+            <label style={labelStyle}>{label}</label>
+            <input
+              type={type} placeholder={ph} value={val}
+              onChange={(e) => set(e.target.value)}
+              style={inputStyle}
+              onFocus={(e) => e.target.style.borderColor = "#0E8C8C"}
+              onBlur={(e) => e.target.style.borderColor = c.inputBorder}
+            />
+          </div>
+        ))}
 
-        {/* Email */}
-        <div style={styles.groupe}>
-          <label style={styles.label}>Email</label>
-          <input
-            type="email"
-            placeholder="exemple@email.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={styles.input}
-          />
-        </div>
-
-        {/* Mot de passe */}
-        <div style={styles.groupe}>
-          <label style={styles.label}>Mot de passe</label>
-          <input
-            type="password"
-            placeholder="••••••••"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={styles.input}
-          />
-        </div>
-
-        {/* Confirmation */}
-        <div style={styles.groupe}>
-          <label style={styles.label}>Confirmer le mot de passe</label>
-          <input
-            type="password"
-            placeholder="••••••••"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            style={styles.input}
-          />
-        </div>
-
-        <button onClick={handleRegister} style={styles.bouton}>
-          S'inscrire
+        {/* Bouton */}
+        <button onClick={handleRegister} style={{
+          width: "100%", padding: "14px",
+          background: c.boutonBg, color: "white", border: "none",
+          borderRadius: "12px", fontSize: "15px", fontWeight: "600",
+          cursor: "pointer", marginTop: "8px",
+          boxShadow: "0 8px 20px rgba(14,140,140,0.35)",
+        }}>
+          Créer mon compte
         </button>
 
-        <p style={styles.lienTexte}>
-          Déjà un compte ?{" "}
-          <Link to="/login" style={styles.lien}>Se connecter</Link>
-        </p>
+        {/* Séparateur */}
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", margin: "20px 0" }}>
+          <div style={{ flex: 1, height: "1px", backgroundColor: c.cardBorder }}/>
+          <span style={{ fontSize: "12px", color: c.texteSecondaire }}>ou</span>
+          <div style={{ flex: 1, height: "1px", backgroundColor: c.cardBorder }}/>
+        </div>
 
+        <p style={{ textAlign: "center", fontSize: "13px", color: c.texteSecondaire, margin: 0 }}>
+          Déjà un compte ?{" "}
+          <Link to="/login" style={{ color: c.accent, textDecoration: "none", fontWeight: "600" }}>
+            Se connecter
+          </Link>
+        </p>
       </div>
     </div>
   );
 }
-
-const styles = {
-  page: {
-    minHeight: "100vh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#f5f5f5",
-  },
-  card: {
-    backgroundColor: "white",
-    padding: "2rem",
-    borderRadius: "12px",
-    border: "0.5px solid #ddd",
-    width: "100%",
-    maxWidth: "400px",
-  },
-  titre: {
-    fontSize: "24px",
-    fontWeight: "500",
-    textAlign: "center",
-    marginBottom: "4px",
-  },
-  sousTitre: {
-    fontSize: "14px",
-    color: "#888",
-    textAlign: "center",
-    marginBottom: "24px",
-  },
-  groupe: {
-    marginBottom: "16px",
-  },
-  label: {
-    display: "block",
-    fontSize: "13px",
-    marginBottom: "6px",
-    color: "#444",
-  },
-  input: {
-    width: "100%",
-    padding: "10px",
-    borderRadius: "8px",
-    border: "1px solid #ddd",
-    fontSize: "14px",
-    boxSizing: "border-box",
-  },
-  bouton: {
-    width: "100%",
-    padding: "12px",
-    backgroundColor: "#534AB7",
-    color: "white",
-    border: "none",
-    borderRadius: "8px",
-    fontSize: "15px",
-    cursor: "pointer",
-    marginTop: "8px",
-  },
-  succes: {
-    backgroundColor: "#EAF3DE",
-    color: "#3B6D11",
-    padding: "10px",
-    borderRadius: "8px",
-    fontSize: "13px",
-    marginBottom: "16px",
-  },
-  erreur: {
-    backgroundColor: "#FCEBEB",
-    color: "#A32D2D",
-    padding: "10px",
-    borderRadius: "8px",
-    fontSize: "13px",
-    marginBottom: "16px",
-  },
-  lienTexte: {
-    textAlign: "center",
-    fontSize: "13px",
-    marginTop: "16px",
-    color: "#666",
-  },
-  lien: {
-    color: "#534AB7",
-    textDecoration: "none",
-    fontWeight: "500",
-  },
-};
 
 export default RegisterPage;
