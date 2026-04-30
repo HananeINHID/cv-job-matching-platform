@@ -5,7 +5,8 @@ from .views import (
     CVProfileView,
     UserProfileRetrieveUpdateView,
     UserRegistrationView,
-    EmailVerificationView
+    EmailVerificationView,
+    MatchingResultsView,
 )
 
 
@@ -17,4 +18,5 @@ urlpatterns = [
     path('profile/me/', UserProfileRetrieveUpdateView.as_view(), name='user-profile-me'),
     path('auth/register/', UserRegistrationView.as_view(), name='user-register'),
     path('auth/verify-email/<str:uidb64>/<str:token>/', EmailVerificationView.as_view(), name='verify-email'),
+    path('matching/results/', MatchingResultsView.as_view(), name='matching-results'),
 ]

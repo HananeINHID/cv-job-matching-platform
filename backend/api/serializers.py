@@ -35,9 +35,11 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         """
-        Crée un utilisateur inactif et envoie l'email de vérification.
+        Crée un utilisateur et gère l'activation selon l'environnement :
+        - DEBUG=True  (dev)  → is_active=True, pas d'email requis
+        - DEBUG=False (prod) → is_active=False, vérification email obligatoire
         """
-        # Vérification d'unicité du username 
+        # Vérification d'unicité du username
         if User.objects.filter(username=validated_data['username']).exists():
             raise serializers.ValidationError(
                 {"username": "Ce nom d'utilisateur est déjà pris."}
@@ -46,24 +48,23 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         validated_data.pop('password_confirm')
         password = validated_data.pop('password')
 
-        # Créer l'utilisateur avec is_active=False
+        is_dev = getattr(settings, 'DEBUG', False)
+
+        # En dev : compte actif immédiatement
         user = User.objects.create_user(
             username=validated_data['username'],
             email=validated_data['email'],
             password=password,
-            is_active=False  # Compte inactif jusqu'à vérification
+            is_active=is_dev  # True en dev, False en prod
         )
-        
-        # Générer le token et l'UID
-        token = default_token_generator.make_token(user)
-        uid = urlsafe_base64_encode(force_bytes(user.pk))
-        
-        # Construire le lien de vérification (vers le frontend)
-        verification_link = f"{settings.FRONTEND_URL}/verify-email/{uid}/{token}/"
-        
-        # Envoyer l'email
-        self.send_verification_email(user.email, verification_link)
-        
+
+        if not is_dev:
+            # En production uniquement : envoi de l'email de vérification
+            token = default_token_generator.make_token(user)
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            verification_link = f"{settings.FRONTEND_URL}/verify-email/{uid}/{token}/"
+            self.send_verification_email(user.email, verification_link)
+
         return user
 
     def send_verification_email(self, email, verification_link):

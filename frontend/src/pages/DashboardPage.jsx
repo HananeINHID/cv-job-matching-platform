@@ -28,10 +28,20 @@ function DashboardPage() {
       const token = localStorage.getItem("token");
       if (!token) { setLoading(false); return; }
       try {
-        const response = await API.get("/profile/cv/");
-        setProfil(response.data);
-      } catch {
-        console.log("Utilisation des données mock");
+        const response = await API.get("/profile/");
+        const data = response.data;
+        // Le serializer retourne hard_skills_list / soft_skills_list comme listes.
+        // On normalise pour que le reste du composant lise toujours data.hard_skills etc.
+        setProfil({
+          ...data,
+          hard_skills: Array.isArray(data.hard_skills_list) ? data.hard_skills_list
+                       : Array.isArray(data.hard_skills) ? data.hard_skills : [],
+          soft_skills: Array.isArray(data.soft_skills_list) ? data.soft_skills_list
+                       : Array.isArray(data.soft_skills) ? data.soft_skills : [],
+        });
+      } catch (error) {
+        // MODE TEST : on ne redirige pas vers login
+        console.log("Backend pas prêt, utilisation des données mock");
       } finally {
         setLoading(false);
       }

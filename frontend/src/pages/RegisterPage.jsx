@@ -54,7 +54,9 @@ function RegisterPage() {
         username: nom, email, password, password_confirm: confirm
       });
       setSucces(true);
-      setTimeout(() => navigate("/login"), 2500);
+      // Redirection vers login après 2 secondes
+      setTimeout(() => navigate("/login"), 2000);
+
     } catch (error) {
       const data = error.response?.data;
       if (data) {
