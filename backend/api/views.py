@@ -49,7 +49,7 @@ class UserProfileView(APIView):
         if serializer.is_valid():
             try:
                 with transaction.atomic():
-                    serializer.save()
+                    serializer.save(user=request.user)
                 return Response(serializer.data, status=status.HTTP_200_OK)
             except Exception as e:
                 return Response(
@@ -109,15 +109,14 @@ class CVProfileView(APIView):
         if serializer.is_valid():
             try:
                 with transaction.atomic():
-                    profile = serializer.save()
-                    if not hasattr(profile, 'user'):
-                        profile.user = request.user
-                        profile.save()
+                    profile = serializer.save(user=request.user)
                 return Response({
                     "message": "Profil enregistré avec succès",
                     "data": serializer.data
                 }, status=status.HTTP_200_OK)
             except Exception as e:
+                import traceback
+                print(traceback.format_exc())
                 return Response(
                     {"error": "Erreur lors de la sauvegarde.", "detail": str(e)},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
