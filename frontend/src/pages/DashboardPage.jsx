@@ -19,7 +19,7 @@ function DashboardPage() {
     if (!token) return "Utilisateur";
     try {
       const payload = JSON.parse(atob(token.split(".")[1]));
-      return payload.username || "Utilisateur";
+      return payload.username || data.personal_info?.nom.split(" ")[0] ;
     } catch { return "Utilisateur"; }
   };
 
@@ -146,7 +146,7 @@ function DashboardPage() {
         {/* Bienvenue */}
         <div style={{ marginBottom:"28px" }}>
           <h1 style={{ fontSize:"28px", fontWeight:"700", color: c.textePrimaire, marginBottom:"6px" }}>
-            Bonjour, {getNomDepuisToken()} 👋
+            Bonjour, {data.personal_info?.nom.split(" ")[0]} 👋
           </h1>
           <p style={{ fontSize:"15px", color: c.texteSecondaire }}>
             {data.personal_info?.titre || "Complétez votre profil pour commencer"}
