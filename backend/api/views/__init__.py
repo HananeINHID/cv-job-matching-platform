@@ -20,6 +20,13 @@ from .matching_views import (
 from .job_search_views import (
     JobSearchView,
 )
+from .stats_views import (
+    WordCloudView,
+    GeoDistributionView,
+    ScoreDistributionView,
+    RadarChartView,
+    ClusterView,
+)
 
 __all__ = [
     "UserRegistrationView",
@@ -29,4 +36,9 @@ __all__ = [
     "UserProfileRetrieveUpdateView",
     "MatchingResultsView",
     "JobSearchView",
+    "WordCloudView",
+    "GeoDistributionView",
+    "ScoreDistributionView",
+    "RadarChartView",
+    "ClusterView",
 ]
