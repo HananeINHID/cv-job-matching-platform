@@ -17,6 +17,9 @@ from .profile_views import (
 from .matching_views import (
     MatchingResultsView,
 )
+from .job_search_views import (
+    JobSearchView,
+)
 
 __all__ = [
     "UserRegistrationView",
@@ -25,4 +28,5 @@ __all__ = [
     "CVProfileView",
     "UserProfileRetrieveUpdateView",
     "MatchingResultsView",
+    "JobSearchView",
 ]

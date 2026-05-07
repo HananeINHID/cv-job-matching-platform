@@ -95,9 +95,13 @@ class JobOffer(models.Model):
         null=True, blank=True,
         related_name='job_offers'  
     )
-    is_active = models.BooleanField(default=True)  
-    created_at = models.DateTimeField(auto_now_add=True)  
-    updated_at = models.DateTimeField(auto_now=True)  
+    source = models.CharField(
+        max_length=50, blank=True, default='',
+        help_text="Origine de l'offre : rekrute, emploima, marocannonces, manual…"
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.title} - {self.company}"

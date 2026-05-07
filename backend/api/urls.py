@@ -7,6 +7,7 @@ from .views import (
     UserRegistrationView,
     EmailVerificationView,
     MatchingResultsView,
+    JobSearchView,
 )
 
 
@@ -19,4 +20,5 @@ urlpatterns = [
     path('auth/register/', UserRegistrationView.as_view(), name='user-register'),
     path('auth/verify-email/<str:uidb64>/<str:token>/', EmailVerificationView.as_view(), name='verify-email'),
     path('matching/results/', MatchingResultsView.as_view(), name='matching-results'),
+    path('jobs/search/', JobSearchView.as_view(), name='job-search'),
 ]
