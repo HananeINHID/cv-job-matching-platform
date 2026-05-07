@@ -13,6 +13,7 @@ from .profile_views import (
     UserProfileView,
     CVProfileView,
     UserProfileRetrieveUpdateView,
+    SearchHistoryView,
 )
 from .matching_views import (
     MatchingResultsView,

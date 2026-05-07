@@ -13,6 +13,7 @@ from .views import (
     ScoreDistributionView,
     RadarChartView,
     ClusterView,
+    SearchHistoryView,
 )
 
 
@@ -27,6 +28,7 @@ urlpatterns = [
     path('profile/', UserProfileView.as_view(), name='user-profile'),
     path('profile/cv/', CVProfileView.as_view(), name='cv-profile'),
     path('profile/me/', UserProfileRetrieveUpdateView.as_view(), name='user-profile-me'),
+    path('profile/history/', SearchHistoryView.as_view(), name='search-history'),
 
     # Matching & recherche
     path('matching/results/', MatchingResultsView.as_view(), name='matching-results'),
