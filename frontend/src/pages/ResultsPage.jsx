@@ -1,67 +1,235 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Chart as ChartJS, RadialLinearScale, PointElement, LineElement,
+import { 
+  Briefcase, ArrowLeft, Sun, Moon, List, BarChart2, PieChart, User 
+} from "lucide-react";
+import {
+  Chart as ChartJS, RadialLinearScale, PointElement, LineElement,
   Filler, CategoryScale, LinearScale, BarElement, ScatterController,
-  Tooltip, Legend } from "chart.js";
+  Tooltip, Legend
+} from "chart.js";
 import { Radar, Bar, Scatter } from "react-chartjs-2";
-import API from "../services/api";
+import API, { getRadar, getWordcloud, getScoreDistribution, getClusters } from "../services/api";
 
 ChartJS.register(RadialLinearScale, PointElement, LineElement, Filler,
   CategoryScale, LinearScale, BarElement, ScatterController, Tooltip, Legend);
 
+// ── Fallback mock (si backend indisponible) ────────────────────────────────
 const MOCK_OFFRES = [
-  { id:1, titre:"Développeur React Frontend", entreprise:"Capgemini Maroc",  ville:"Casablanca", contrat:"CDI",   score:87, competences:["React","JavaScript","CSS","Git"] },
-  { id:2, titre:"Frontend Engineer",          entreprise:"OCP Digital",      ville:"Rabat",       contrat:"CDI",   score:74, competences:["React","TypeScript","REST API"] },
-  { id:3, titre:"Développeur Full Stack",     entreprise:"StartupTech",      ville:"Casablanca",  contrat:"CDD",   score:65, competences:["React","Node.js","MongoDB"] },
-  { id:4, titre:"UI Developer",               entreprise:"Sofrecom",         ville:"Casablanca",  contrat:"Stage", score:58, competences:["HTML","CSS","JavaScript"] },
-  { id:5, titre:"Web Developer",              entreprise:"Maroc Telecom",    ville:"Rabat",       contrat:"CDI",   score:45, competences:["Vue.js","PHP","MySQL"] },
+  { id: 1, titre: "Développeur React Frontend", entreprise: "Capgemini Maroc", ville: "Casablanca", contrat: "CDI", score: 87, competences: ["React", "JavaScript", "CSS", "Git"] },
+  { id: 2, titre: "Frontend Engineer", entreprise: "OCP Digital", ville: "Rabat", contrat: "CDI", score: 74, competences: ["React", "TypeScript", "REST API"] },
+  { id: 3, titre: "Développeur Full Stack", entreprise: "StartupTech", ville: "Casablanca", contrat: "CDD", score: 65, competences: ["React", "Node.js", "MongoDB"] },
+  { id: 4, titre: "UI Developer", entreprise: "Sofrecom", ville: "Casablanca", contrat: "Stage", score: 58, competences: ["HTML", "CSS", "JavaScript"] },
+  { id: 5, titre: "Web Developer", entreprise: "Maroc Telecom", ville: "Rabat", contrat: "CDI", score: 45, competences: ["Vue.js", "PHP", "MySQL"] },
 ];
 
+const MOCK_RADAR = {
+  labels: ["React", "JavaScript", "CSS", "Python", "SQL", "Git"],
+  datasets: [
+    { label: "Votre profil", data: [90, 80, 75, 60, 50, 70], backgroundColor: "rgba(14,140,140,0.2)", borderColor: "#0E8C8C", borderWidth: 2, pointBackgroundColor: "#0E8C8C" },
+    { label: "Offre sélectionnée", data: [95, 90, 70, 30, 40, 80], backgroundColor: "rgba(255,107,71,0.15)", borderColor: "#FF6B47", borderWidth: 2, pointBackgroundColor: "#FF6B47" },
+  ],
+};
+
+const MOCK_COMPETENCES = {
+  labels: ["React", "JavaScript", "Python", "Django", "SQL", "Node.js", "CSS", "Git"],
+  datasets: [{ label: "Fréquence", data: [95, 88, 75, 70, 65, 60, 58, 55], backgroundColor: "#0E8C8C", borderRadius: 6 }],
+};
+
+const MOCK_DISTRIBUTION = {
+  labels: ["0-25", "25-50", "50-75", "75-100"],
+  datasets: [{ label: "Nombre d'offres", data: [5, 18, 32, 12], backgroundColor: ["#E24B4A", "#F0A500", "#0E8C8C", "#0A6B4A"], borderRadius: 6 }],
+};
+
+const MOCK_CLUSTERS = {
+  datasets: [
+    { label: "Frontend", data: [{ x: 20, y: 80 }, { x: 25, y: 75 }, { x: 30, y: 85 }], backgroundColor: "#0E8C8C", pointRadius: 10 },
+    { label: "Data", data: [{ x: 70, y: 40 }, { x: 75, y: 35 }, { x: 65, y: 45 }], backgroundColor: "#FF6B47", pointRadius: 10 },
+    { label: "Fullstack", data: [{ x: 50, y: 60 }, { x: 55, y: 55 }, { x: 48, y: 65 }], backgroundColor: "#764BA2", pointRadius: 10 },
+  ],
+};
+
+const CLUSTER_COLORS = ["#0E8C8C", "#FF6B47", "#764BA2", "#F0A500", "#22C55E", "#3B82F6", "#EC4899"];
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+/** Normalise la réponse clusters quelle que soit sa forme */
+function normaliserClusters(raw) {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+
+  // Format A : [{ cluster_id, label, points:[{x,y}] }]
+  if (raw[0]?.points !== undefined) {
+    return {
+      datasets: raw.map((cl, i) => ({
+        label: cl.label || `Cluster ${cl.cluster_id ?? i}`,
+        data: cl.points,
+        backgroundColor: CLUSTER_COLORS[i % CLUSTER_COLORS.length],
+        pointRadius: 10,
+      })),
+    };
+  }
+
+  // Format B : [{ x, y, cluster, label }]
+  const groupes = {};
+  raw.forEach((pt) => {
+    const key = pt.cluster ?? pt.cluster_id ?? 0;
+    if (!groupes[key]) groupes[key] = { label: pt.label || `Cluster ${key}`, points: [] };
+    groupes[key].points.push({ x: pt.x, y: pt.y });
+  });
+  return {
+    datasets: Object.values(groupes).map((g, i) => ({
+      label: g.label,
+      data: g.points,
+      backgroundColor: CLUSTER_COLORS[i % CLUSTER_COLORS.length],
+      pointRadius: 10,
+    })),
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function ResultsPage() {
-  const navigate   = useNavigate();
-  const location   = useLocation();
-  const recherche  = location.state?.recherche || "";
-  const [darkMode, setDarkMode]           = useState(false);
-  const [offres, setOffres]               = useState([]);
-  const [offreSelectionnee, setOffre]     = useState(null);
-  const [loading, setLoading]             = useState(true);
-  const [onglet, setOnglet]               = useState("offres");
+  const navigate = useNavigate();
+  const location = useLocation();
+  const recherche = location.state?.recherche || "";
+  const source = location.state?.source || "dataset";
+
+  const getNomDepuisToken = () => {
+    const token = localStorage.getItem("token");
+    if (!token) return "Utilisateur";
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      return payload.username || "Utilisateur";
+    } catch { return "Utilisateur"; }
+  };
+
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem("darkMode");
+    if (saved !== null) return saved === "true";
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  });
+  const [offres, setOffres] = useState([]);
+  const [offreSelectionnee, setOffre] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [onglet, setOnglet] = useState("offres");
+
+  // Données graphiques
+  const [radarData, setRadarData] = useState(MOCK_RADAR);
+  const [radarLoading, setRadarLoading] = useState(false);
+  const [competences, setCompetences] = useState(MOCK_COMPETENCES);
+  const [distribution, setDistribution] = useState(MOCK_DISTRIBUTION);
+  const [clusters, setClusters] = useState(MOCK_CLUSTERS);
 
   useEffect(() => {
-    setDarkMode(window.matchMedia("(prefers-color-scheme: dark)").matches);
-  }, []);
+    localStorage.setItem("darkMode", darkMode);
+  }, [darkMode]);
 
+  // ── Chargement offres ──────────────────────────────────────────────────
   useEffect(() => {
     const charger = async () => {
       try {
-        const response = await API.get(`/matching/results/?q=${recherche}`);
-        setOffres(response.data);
-        setOffre(response.data[0]);
+        const response = await API.get(`/matching/results/?q=${encodeURIComponent(recherche)}&source=${source}`);
+        const list = Array.isArray(response.data) ? response.data : [];
+        setOffres(list);
+        if (list.length > 0) setOffre(list[0]);
       } catch {
         setOffres(MOCK_OFFRES);
         setOffre(MOCK_OFFRES[0]);
-      } finally { setLoading(false); }
+      } finally {
+        setLoading(false);
+      }
     };
     charger();
   }, []);
 
+  // ── Chargement stats graphiques ────────────────────────────────────────
+  useEffect(() => {
+    // Wordcloud → Compétences les + demandées
+    getWordcloud()
+      .then(({ data }) => {
+        if (Array.isArray(data) && data.length > 0) {
+          const sorted = [...data].sort((a, b) => (b.value ?? b.count ?? 0) - (a.value ?? a.count ?? 0)).slice(0, 12);
+          setCompetences({
+            labels: sorted.map(d => d.text || d.skill || d.label || "?"),
+            datasets: [{ label: "Fréquence", data: sorted.map(d => d.value ?? d.count ?? 0), backgroundColor: "#0E8C8C", borderRadius: 6 }],
+          });
+        }
+      })
+      .catch(() => {/* fallback déjà en place */ });
+
+    // Distribution des scores
+    getScoreDistribution()
+      .then(({ data }) => {
+        if (data?.labels && data?.counts) {
+          setDistribution({
+            labels: data.labels,
+            datasets: [{
+              label: "Nombre d'offres", data: data.counts,
+              backgroundColor: ["#E24B4A", "#F0A500", "#0E8C8C", "#0A6B4A"],
+              borderRadius: 6
+            }],
+          });
+        }
+      })
+      .catch(() => { });
+
+    // Clusters K-Means
+    getClusters()
+      .then(({ data }) => {
+        const normalized = normaliserClusters(data);
+        if (normalized) setClusters(normalized);
+      })
+      .catch(() => { });
+  }, []);
+
+  // ── Radar au changement d'offre ────────────────────────────────────────
+  const chargerRadar = useCallback(async (offre) => {
+    if (!offre?.id || typeof offre.id !== "number" || offre.id > 1000) {
+      // Offre mock — garder le radar par défaut
+      setRadarData(MOCK_RADAR);
+      return;
+    }
+    setRadarLoading(true);
+    try {
+      const { data } = await getRadar(offre.id);
+      if (data?.labels && data?.cv && data?.offre) {
+        setRadarData({
+          labels: data.labels,
+          datasets: [
+            { label: "Votre profil", data: data.cv, backgroundColor: "rgba(14,140,140,0.2)", borderColor: "#0E8C8C", borderWidth: 2, pointBackgroundColor: "#0E8C8C" },
+            { label: "Offre sélectionnée", data: data.offre, backgroundColor: "rgba(255,107,71,0.15)", borderColor: "#FF6B47", borderWidth: 2, pointBackgroundColor: "#FF6B47" },
+          ],
+        });
+      }
+    } catch {
+      setRadarData(MOCK_RADAR);
+    } finally {
+      setRadarLoading(false);
+    }
+  }, []);
+
+  // Charger le radar dès qu'une offre est sélectionnée
+  useEffect(() => {
+    if (offreSelectionnee) chargerRadar(offreSelectionnee);
+  }, [offreSelectionnee, chargerRadar]);
+
+  // ── Palette couleurs ───────────────────────────────────────────────────
   const c = {
-    pageBg:      darkMode ? "#0D1B2A" : "#F0F4F8",
-    navBg:       darkMode ? "#0F2030" : "#FFFFFF",
-    cardBg:      darkMode ? "#1A2B3C" : "#FFFFFF",
-    cardBorder:  darkMode ? "#1E3A5F" : "#E2EAF4",
-    cardShadow:  darkMode ? "0 4px 20px rgba(0,0,0,0.3)" : "0 4px 20px rgba(14,90,130,0.06)",
-    textePrimaire:   darkMode ? "#E8F1F8" : "#1A2B3C",
+    pageBg: darkMode ? "#0D1B2A" : "#F0F4F8",
+    navBg: darkMode ? "#0F2030" : "#FFFFFF",
+    cardBg: darkMode ? "#1A2B3C" : "#FFFFFF",
+    cardBorder: darkMode ? "#1E3A5F" : "#E2EAF4",
+    cardShadow: darkMode ? "0 4px 20px rgba(0,0,0,0.3)" : "0 4px 20px rgba(14,90,130,0.06)",
+    textePrimaire: darkMode ? "#E8F1F8" : "#1A2B3C",
     texteSecondaire: darkMode ? "#7A9BB5" : "#5A7184",
-    tealColor:   darkMode ? "#4DD9D9" : "#0E8C8C",
-    accent:      "#FF6B47",
-    toggleBg:    darkMode ? "#1E3A5F" : "#E2EAF4",
-    tagTealBg:   darkMode ? "rgba(14,140,140,0.2)" : "#E6F7F7",
+    tealColor: darkMode ? "#4DD9D9" : "#0E8C8C",
+    accent: "#FF6B47",
+    toggleBg: darkMode ? "#1E3A5F" : "#E2EAF4",
+    tagTealBg: darkMode ? "rgba(14,140,140,0.2)" : "#E6F7F7",
     tagTealText: darkMode ? "#4DD9D9" : "#0E8C8C",
-    boutonBg:    "linear-gradient(135deg, #0E8C8C, #0A6B7C)",
-    inputBg:     darkMode ? "#0F2030" : "#F7FAFD",
+    boutonBg: "linear-gradient(135deg, #0E8C8C, #0A6B7C)",
+    inputBg: darkMode ? "#0F2030" : "#F7FAFD",
     inputBorder: darkMode ? "#1E3A5F" : "#C8DCF0",
-    inputTexte:  darkMode ? "#E8F1F8" : "#1A2B3C",
+    inputTexte: darkMode ? "#E8F1F8" : "#1A2B3C",
   };
 
   const couleurScore = (score) => {
@@ -70,108 +238,111 @@ function ResultsPage() {
     return { bg: darkMode ? "rgba(220,80,60,0.2)" : "#FFF0EE", txt: darkMode ? "#FF9080" : "#C0392B" };
   };
 
-  const radarData = {
-    labels: ["React", "JavaScript", "CSS", "Python", "SQL", "Git"],
-    datasets: [
-      { label:"Votre profil", data:[90,80,75,60,50,70],
-        backgroundColor:"rgba(14,140,140,0.2)", borderColor:"#0E8C8C",
-        borderWidth:2, pointBackgroundColor:"#0E8C8C" },
-      { label:"Offre sélectionnée", data:[95,90,70,30,40,80],
-        backgroundColor:"rgba(255,107,71,0.15)", borderColor:"#FF6B47",
-        borderWidth:2, pointBackgroundColor:"#FF6B47" },
-    ],
-  };
-
   const barScoresData = {
     labels: offres.map((o) => o.entreprise),
-    datasets: [{ label:"Score (%)", data: offres.map((o) => o.score),
-      backgroundColor: offres.map((o) => o.score>=75?"#0E8C8C": o.score>=50?"#F0A500":"#E24B4A"),
-      borderRadius: 8 }],
+    datasets: [{
+      label: "Score (%)", data: offres.map((o) => o.score),
+      backgroundColor: offres.map((o) => o.score >= 75 ? "#0E8C8C" : o.score >= 50 ? "#F0A500" : "#E24B4A"),
+      borderRadius: 8
+    }],
   };
 
-  const competencesData = {
-    labels: ["React","JavaScript","Python","Django","SQL","Node.js","CSS","Git"],
-    datasets: [{ label:"Fréquence", data:[95,88,75,70,65,60,58,55],
-      backgroundColor:"#0E8C8C", borderRadius:6 }],
-  };
-
-  const clusterData = {
-    datasets: [
-      { label:"Frontend", data:[{x:20,y:80},{x:25,y:75},{x:30,y:85}], backgroundColor:"#0E8C8C", pointRadius:10 },
-      { label:"Data",     data:[{x:70,y:40},{x:75,y:35},{x:65,y:45}], backgroundColor:"#FF6B47", pointRadius:10 },
-      { label:"Fullstack",data:[{x:50,y:60},{x:55,y:55},{x:48,y:65}], backgroundColor:"#764BA2", pointRadius:10 },
-    ],
-  };
-
-  const chartOptions = (darkMode) => ({
-    plugins: { legend: { labels: { color: darkMode ? "#E8F1F8" : "#1A2B3C" } } },
+  const chartOptions = (dm) => ({
+    plugins: { legend: { labels: { color: dm ? "#E8F1F8" : "#1A2B3C" } } },
     scales: {
-      x: { ticks: { color: darkMode ? "#7A9BB5" : "#5A7184" }, grid: { color: darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)" } },
-      y: { ticks: { color: darkMode ? "#7A9BB5" : "#5A7184" }, grid: { color: darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)" } },
+      x: { ticks: { color: dm ? "#7A9BB5" : "#5A7184" }, grid: { color: dm ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)" } },
+      y: { ticks: { color: dm ? "#7A9BB5" : "#5A7184" }, grid: { color: dm ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)" } },
     },
   });
 
   if (loading) return (
-    <div style={{ minHeight:"100vh", width:"100%", backgroundColor: c.pageBg,
-      display:"flex", alignItems:"center", justifyContent:"center" }}>
-      <p style={{ color: c.texteSecondaire, fontSize:"16px" }}>⏳ Analyse en cours...</p>
+    <div style={{
+      minHeight: "100vh", width: "100%", backgroundColor: c.pageBg,
+      display: "flex", alignItems: "center", justifyContent: "center"
+    }}>
+      <p style={{ color: c.texteSecondaire, fontSize: "16px" }}>⏳ Analyse en cours...</p>
     </div>
   );
 
   return (
-    <div style={{ minHeight:"100vh", width:"100%", backgroundColor: c.pageBg }}>
+    <div style={{ minHeight: "100vh", width: "100%", backgroundColor: c.pageBg }}>
 
       {/* Navbar */}
       <nav style={{
         backgroundColor: c.navBg, borderBottom: `1px solid ${c.cardBorder}`,
-        padding:"0 2rem", height:"64px",
-        display:"flex", alignItems:"center", justifyContent:"space-between",
-        position:"sticky", top:0, zIndex:50,
+        padding: "0 2rem", height: "64px",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        position: "sticky", top: 0, zIndex: 50,
         boxShadow: darkMode ? "0 2px 20px rgba(0,0,0,0.3)" : "0 2px 20px rgba(14,90,130,0.08)",
       }}>
-        <span style={{ fontSize:"20px", fontWeight:"700", background: c.boutonBg,
-          WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>
-          💼 CV Matching
+        <span style={{
+          fontSize: "20px", fontWeight: "700", background: c.boutonBg,
+          WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+          display: "flex", alignItems: "center", gap: "8px"
+        }}>
+          <Briefcase size={22} style={{ color: "#0E8C8C" }} /> CV Matching
         </span>
-        <div style={{ display:"flex", gap:"10px", alignItems:"center" }}>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
           <button onClick={() => navigate("/dashboard")} style={{
-            padding:"8px 16px", backgroundColor:"transparent",
-            color: c.texteSecondaire, border:`1px solid ${c.cardBorder}`,
-            borderRadius:"10px", fontSize:"13px", cursor:"pointer",
-          }}>← Dashboard</button>
+            padding: "8px 16px", backgroundColor: "transparent",
+            color: c.texteSecondaire, border: `1px solid ${c.cardBorder}`,
+            borderRadius: "10px", fontSize: "13px", cursor: "pointer",
+            display: "flex", alignItems: "center", gap: "6px"
+          }}><ArrowLeft size={14} /> Dashboard</button>
+          
+          <span style={{
+            fontSize: "13px", fontWeight: "600",
+            color: "#0E8C8C", backgroundColor: darkMode ? "rgba(14,140,140,0.2)" : "#E6F7F7",
+            padding: "6px 14px", borderRadius: "20px",
+            border: `1px solid ${darkMode ? "rgba(14,140,140,0.3)" : "rgba(14,140,140,0.2)"}`,
+            display: "flex", alignItems: "center", gap: "6px"
+          }}>
+            <User size={14} /> {getNomDepuisToken()}
+          </span>
+
           <button onClick={() => setDarkMode(!darkMode)} style={{
-            width:"38px", height:"38px", borderRadius:"50%",
-            border:`1px solid ${c.cardBorder}`, backgroundColor: c.toggleBg,
-            fontSize:"16px", cursor:"pointer",
-          }}>{darkMode ? "☀️" : "🌙"}</button>
+            width: "38px", height: "38px", borderRadius: "50%",
+            border: `1px solid ${c.cardBorder}`, backgroundColor: c.toggleBg,
+            fontSize: "16px", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center"
+          }}>{darkMode ? <Sun size={18} color="#FFB300" /> : <Moon size={18} color="#5A7184" />}</button>
         </div>
       </nav>
 
-      <div style={{ maxWidth:"1050px", margin:"0 auto", padding:"2rem 1rem" }}>
+      <div style={{ maxWidth: "1050px", margin: "0 auto", padding: "2rem 1rem" }}>
 
-        <h1 style={{ fontSize:"26px", fontWeight:"700", color: c.textePrimaire, marginBottom:"4px" }}>
+        <h1 style={{ fontSize: "26px", fontWeight: "700", color: c.textePrimaire, marginBottom: "4px" }}>
           Résultats de matching
         </h1>
-        {recherche && <p style={{ fontSize:"14px", color: c.texteSecondaire, marginBottom:"20px" }}>
-          Recherche : « {recherche} »
-        </p>}
+        {recherche && (
+          <p style={{ fontSize: "14px", color: c.texteSecondaire, marginBottom: "4px" }}>
+            Recherche : « {recherche} »
+          </p>
+        )}
+        <p style={{ fontSize: "13px", color: c.texteSecondaire, marginBottom: "20px" }}>
+          Source : <strong style={{ color: c.tealColor }}>{source}</strong>
+        </p>
 
         {/* Onglets */}
-        <div style={{ display:"flex", gap:"8px", marginBottom:"24px" }}>
+        <div style={{ display: "flex", gap: "8px", marginBottom: "24px" }}>
           {[
-            { id:"offres",      label:"📋 Offres" },
-            { id:"graphiques",  label:"📊 Graphiques" },
-            { id:"clusters",    label:"🔵 Clusters" },
-          ].map(({ id, label }) => (
+            { id: "offres", label: "Offres", icon: <List size={16} /> },
+            { id: "graphiques", label: "Graphiques", icon: <BarChart2 size={16} /> },
+            { id: "clusters", label: "Clusters", icon: <PieChart size={16} /> },
+          ].map(({ id, label, icon }) => (
             <button key={id} onClick={() => setOnglet(id)} style={{
-              padding:"10px 22px",
+              padding: "10px 22px",
               background: onglet === id ? c.boutonBg : "transparent",
               color: onglet === id ? "white" : c.texteSecondaire,
               border: onglet === id ? "none" : `1px solid ${c.cardBorder}`,
-              borderRadius:"10px", fontSize:"14px", fontWeight:"600",
-              cursor:"pointer",
+              borderRadius: "10px", fontSize: "14px", fontWeight: "600",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
               boxShadow: onglet === id ? "0 4px 12px rgba(14,140,140,0.3)" : "none",
             }}>
+              {icon}
               {label}
             </button>
           ))}
@@ -179,7 +350,7 @@ function ResultsPage() {
 
         {/* ── ONGLET OFFRES ── */}
         {onglet === "offres" && (
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"16px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
 
             <div>
               {offres.map((offre) => {
@@ -189,23 +360,28 @@ function ResultsPage() {
                   <div key={offre.id} onClick={() => setOffre(offre)} style={{
                     backgroundColor: c.cardBg,
                     border: actif ? `2px solid ${c.tealColor}` : `1px solid ${c.cardBorder}`,
-                    borderRadius:"14px", padding:"1rem", marginBottom:"10px",
-                    cursor:"pointer", boxShadow: actif ? `0 0 0 3px ${darkMode?"rgba(14,140,140,0.2)":"rgba(14,140,140,0.1)"}` : c.cardShadow,
-                    transition:"all 0.2s",
+                    borderRadius: "14px", padding: "1rem", marginBottom: "10px",
+                    cursor: "pointer",
+                    boxShadow: actif ? `0 0 0 3px ${darkMode ? "rgba(14,140,140,0.2)" : "rgba(14,140,140,0.1)"}` : c.cardShadow,
+                    transition: "all 0.2s",
                   }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                       <div>
-                        <p style={{ fontSize:"14px", fontWeight:"700", color: c.textePrimaire, margin:0 }}>{offre.titre}</p>
-                        <p style={{ fontSize:"12px", color: c.texteSecondaire, margin:"4px 0 0" }}>{offre.entreprise} · {offre.ville}</p>
+                        <p style={{ fontSize: "14px", fontWeight: "700", color: c.textePrimaire, margin: 0 }}>{offre.titre}</p>
+                        <p style={{ fontSize: "12px", color: c.texteSecondaire, margin: "4px 0 0" }}>{offre.entreprise} · {offre.ville}</p>
                       </div>
-                      <span style={{ backgroundColor: sc.bg, color: sc.txt,
-                        padding:"5px 12px", borderRadius:"20px", fontSize:"13px", fontWeight:"700" }}>
+                      <span style={{
+                        backgroundColor: sc.bg, color: sc.txt,
+                        padding: "5px 12px", borderRadius: "20px", fontSize: "13px", fontWeight: "700"
+                      }}>
                         {offre.score}%
                       </span>
                     </div>
-                    <span style={{ backgroundColor: c.tagTealBg, color: c.tagTealText,
-                      padding:"3px 10px", borderRadius:"20px", fontSize:"11px",
-                      fontWeight:"600", marginTop:"8px", display:"inline-block" }}>
+                    <span style={{
+                      backgroundColor: c.tagTealBg, color: c.tagTealText,
+                      padding: "3px 10px", borderRadius: "20px", fontSize: "11px",
+                      fontWeight: "600", marginTop: "8px", display: "inline-block"
+                    }}>
                       {offre.contrat}
                     </span>
                   </div>
@@ -214,34 +390,42 @@ function ResultsPage() {
             </div>
 
             {offreSelectionnee && (
-              <div style={{ backgroundColor: c.cardBg, border:`1px solid ${c.cardBorder}`,
-                borderRadius:"16px", padding:"1.5rem", alignSelf:"flex-start",
-                boxShadow: c.cardShadow, position:"sticky", top:"80px" }}>
-                <h2 style={{ fontSize:"18px", fontWeight:"700", color: c.textePrimaire, marginBottom:"4px" }}>
+              <div style={{
+                backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`,
+                borderRadius: "16px", padding: "1.5rem", alignSelf: "flex-start",
+                boxShadow: c.cardShadow, position: "sticky", top: "80px"
+              }}>
+                <h2 style={{ fontSize: "18px", fontWeight: "700", color: c.textePrimaire, marginBottom: "4px" }}>
                   {offreSelectionnee.titre}
                 </h2>
-                <p style={{ fontSize:"13px", color: c.texteSecondaire, marginBottom:"20px" }}>
+                <p style={{ fontSize: "13px", color: c.texteSecondaire, marginBottom: "20px" }}>
                   {offreSelectionnee.entreprise} · {offreSelectionnee.ville}
                 </p>
 
-                <p style={{ fontSize:"12px", color: c.texteSecondaire, margin:"0 0 6px" }}>Score de compatibilité</p>
-                <p style={{ fontSize:"44px", fontWeight:"700", margin:"0 0 10px",
-                  color: couleurScore(offreSelectionnee.score).txt }}>
+                <p style={{ fontSize: "12px", color: c.texteSecondaire, margin: "0 0 6px" }}>Score de compatibilité</p>
+                <p style={{
+                  fontSize: "44px", fontWeight: "700", margin: "0 0 10px",
+                  color: couleurScore(offreSelectionnee.score).txt
+                }}>
                   {offreSelectionnee.score}%
                 </p>
-                <div style={{ backgroundColor: darkMode?"#0F2030":"#F0F4F8", borderRadius:"10px", height:"8px", overflow:"hidden", marginBottom:"20px" }}>
-                  <div style={{ height:"100%", borderRadius:"10px",
-                    width:`${offreSelectionnee.score}%`,
-                    background: c.boutonBg, transition:"width 0.5s ease" }}/>
+                <div style={{ backgroundColor: darkMode ? "#0F2030" : "#F0F4F8", borderRadius: "10px", height: "8px", overflow: "hidden", marginBottom: "20px" }}>
+                  <div style={{
+                    height: "100%", borderRadius: "10px",
+                    width: `${offreSelectionnee.score}%`,
+                    background: c.boutonBg, transition: "width 0.5s ease"
+                  }} />
                 </div>
 
-                <p style={{ fontSize:"12px", fontWeight:"600", color: c.texteSecondaire, marginBottom:"10px", textTransform:"uppercase", letterSpacing:"0.5px" }}>
+                <p style={{ fontSize: "12px", fontWeight: "600", color: c.texteSecondaire, marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                   Compétences requises
                 </p>
-                <div style={{ display:"flex", flexWrap:"wrap", gap:"6px" }}>
-                  {offreSelectionnee.competences.map((comp) => (
-                    <span key={comp} style={{ backgroundColor: c.tagTealBg, color: c.tagTealText,
-                      padding:"5px 12px", borderRadius:"20px", fontSize:"12px", fontWeight:"600" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                  {(offreSelectionnee.competences || []).map((comp) => (
+                    <span key={comp} style={{
+                      backgroundColor: c.tagTealBg, color: c.tagTealText,
+                      padding: "5px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "600"
+                    }}>
                       {comp}
                     </span>
                   ))}
@@ -254,37 +438,123 @@ function ResultsPage() {
         {/* ── ONGLET GRAPHIQUES ── */}
         {onglet === "graphiques" && (
           <div>
-            {[
-              { titre:"Vos compétences vs l'offre", desc:"Teal = votre profil · Orange = offre sélectionnée",
-                composant: <div style={{ maxWidth:"420px", margin:"0 auto" }}>
-                  <Radar data={radarData} options={{ ...chartOptions(darkMode), scales: { r: { beginAtZero:true, max:100, ticks:{ color: darkMode?"#7A9BB5":"#5A7184" }, grid:{ color: darkMode?"rgba(255,255,255,0.08)":"rgba(0,0,0,0.08)" }, pointLabels:{ color: darkMode?"#E8F1F8":"#1A2B3C" } } }, plugins:{ legend:{ labels:{ color: darkMode?"#E8F1F8":"#1A2B3C" } } } }}/>
-                </div> },
-              { titre:"Score de matching par offre", desc:"Vert ≥ 75% · Orange 50-75% · Rouge < 50%",
-                composant: <Bar data={barScoresData} options={{ ...chartOptions(darkMode), scales:{ y:{ beginAtZero:true, max:100, ticks:{color: darkMode?"#7A9BB5":"#5A7184"}, grid:{color: darkMode?"rgba(255,255,255,0.05)":"rgba(0,0,0,0.05)"} }, x:{ticks:{color: darkMode?"#7A9BB5":"#5A7184"}, grid:{color: darkMode?"rgba(255,255,255,0.05)":"rgba(0,0,0,0.05)"}} }, plugins:{legend:{display:false}} }}/> },
-              { titre:"Compétences les plus demandées", desc:"Fréquence d'apparition dans toutes les offres",
-                composant: <Bar data={competencesData} options={{ ...chartOptions(darkMode), indexAxis:"y", scales:{ x:{beginAtZero:true, max:100, ticks:{color: darkMode?"#7A9BB5":"#5A7184"}, grid:{color: darkMode?"rgba(255,255,255,0.05)":"rgba(0,0,0,0.05)"}}, y:{ticks:{color: darkMode?"#7A9BB5":"#5A7184"}, grid:{color: darkMode?"rgba(255,255,255,0.05)":"rgba(0,0,0,0.05)"}} }, plugins:{legend:{display:false}} }}/> },
-            ].map(({ titre, desc, composant }) => (
-              <div key={titre} style={{ backgroundColor: c.cardBg, border:`1px solid ${c.cardBorder}`,
-                borderRadius:"16px", padding:"1.5rem", marginBottom:"16px", boxShadow: c.cardShadow }}>
-                <h2 style={{ fontSize:"16px", fontWeight:"700", color: c.textePrimaire, marginBottom:"4px" }}>{titre}</h2>
-                <p style={{ fontSize:"13px", color: c.texteSecondaire, marginBottom:"16px" }}>{desc}</p>
-                {composant}
+            {/* Radar */}
+            <div style={{
+              backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`,
+              borderRadius: "16px", padding: "1.5rem", marginBottom: "16px", boxShadow: c.cardShadow
+            }}>
+              <h2 style={{ fontSize: "16px", fontWeight: "700", color: c.textePrimaire, marginBottom: "4px" }}>
+                Vos compétences vs l'offre
+              </h2>
+              <p style={{ fontSize: "13px", color: c.texteSecondaire, marginBottom: "16px" }}>
+                Teal = votre profil · Orange = offre sélectionnée
+                {radarLoading && " · ⏳ Chargement..."}
+              </p>
+              <div style={{ maxWidth: "420px", margin: "0 auto" }}>
+                <Radar data={radarData} options={{
+                  ...chartOptions(darkMode),
+                  scales: {
+                    r: {
+                      beginAtZero: true, max: 100,
+                      ticks: { color: darkMode ? "#7A9BB5" : "#5A7184" },
+                      grid: { color: darkMode ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)" },
+                      pointLabels: { color: darkMode ? "#E8F1F8" : "#1A2B3C" }
+                    }
+                  },
+                  plugins: { legend: { labels: { color: darkMode ? "#E8F1F8" : "#1A2B3C" } } },
+                }} />
               </div>
-            ))}
+            </div>
+
+            {/* Score matching par offre */}
+            <div style={{
+              backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`,
+              borderRadius: "16px", padding: "1.5rem", marginBottom: "16px", boxShadow: c.cardShadow
+            }}>
+              <h2 style={{ fontSize: "16px", fontWeight: "700", color: c.textePrimaire, marginBottom: "4px" }}>
+                Score de matching par offre
+              </h2>
+              <p style={{ fontSize: "13px", color: c.texteSecondaire, marginBottom: "16px" }}>
+                Vert ≥ 75% · Orange 50-75% · Rouge &lt; 50%
+              </p>
+              <Bar data={barScoresData} options={{
+                ...chartOptions(darkMode),
+                scales: {
+                  y: {
+                    beginAtZero: true, max: 100,
+                    ticks: { color: darkMode ? "#7A9BB5" : "#5A7184" },
+                    grid: { color: darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)" }
+                  },
+                  x: {
+                    ticks: { color: darkMode ? "#7A9BB5" : "#5A7184" },
+                    grid: { color: darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)" }
+                  }
+                },
+                plugins: { legend: { display: false } },
+              }} />
+            </div>
+
+            {/* Compétences les + demandées (wordcloud → bar) */}
+            <div style={{
+              backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`,
+              borderRadius: "16px", padding: "1.5rem", marginBottom: "16px", boxShadow: c.cardShadow
+            }}>
+              <h2 style={{ fontSize: "16px", fontWeight: "700", color: c.textePrimaire, marginBottom: "4px" }}>
+                Compétences les plus demandées
+              </h2>
+              <p style={{ fontSize: "13px", color: c.texteSecondaire, marginBottom: "16px" }}>
+                Fréquence d'apparition dans toutes les offres
+              </p>
+              <Bar data={competences} options={{
+                ...chartOptions(darkMode),
+                indexAxis: "y",
+                scales: {
+                  x: { beginAtZero: true, max: 100, ticks: { color: darkMode ? "#7A9BB5" : "#5A7184" }, grid: { color: darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)" } },
+                  y: { ticks: { color: darkMode ? "#7A9BB5" : "#5A7184" }, grid: { color: darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)" } },
+                },
+                plugins: { legend: { display: false } },
+              }} />
+            </div>
+
+            {/* Distribution des scores */}
+            <div style={{
+              backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`,
+              borderRadius: "16px", padding: "1.5rem", marginBottom: "16px", boxShadow: c.cardShadow
+            }}>
+              <h2 style={{ fontSize: "16px", fontWeight: "700", color: c.textePrimaire, marginBottom: "4px" }}>
+                Distribution des scores
+              </h2>
+              <p style={{ fontSize: "13px", color: c.texteSecondaire, marginBottom: "16px" }}>
+                Répartition des offres par tranche de score de compatibilité
+              </p>
+              <Bar data={distribution} options={{
+                ...chartOptions(darkMode),
+                scales: {
+                  y: { beginAtZero: true, ticks: { color: darkMode ? "#7A9BB5" : "#5A7184" }, grid: { color: darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)" } },
+                  x: { ticks: { color: darkMode ? "#7A9BB5" : "#5A7184" }, grid: { color: darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)" } },
+                },
+                plugins: { legend: { display: false } },
+              }} />
+            </div>
           </div>
         )}
 
         {/* ── ONGLET CLUSTERS ── */}
         {onglet === "clusters" && (
-          <div style={{ backgroundColor: c.cardBg, border:`1px solid ${c.cardBorder}`,
-            borderRadius:"16px", padding:"1.5rem", boxShadow: c.cardShadow }}>
-            <h2 style={{ fontSize:"16px", fontWeight:"700", color: c.textePrimaire, marginBottom:"4px" }}>
+          <div style={{
+            backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`,
+            borderRadius: "16px", padding: "1.5rem", boxShadow: c.cardShadow
+          }}>
+            <h2 style={{ fontSize: "16px", fontWeight: "700", color: c.textePrimaire, marginBottom: "4px" }}>
               Clusters K-Means — regroupement des offres
             </h2>
-            <p style={{ fontSize:"13px", color: c.texteSecondaire, marginBottom:"16px" }}>
-              Chaque point = une offre. Les couleurs = le cluster détecté par l'algorithme de Youssef.
+            <p style={{ fontSize: "13px", color: c.texteSecondaire, marginBottom: "16px" }}>
+              Chaque point = une offre. Les couleurs = le cluster détecté par l'algorithme.
             </p>
-            <Scatter data={clusterData} options={{ ...chartOptions(darkMode), plugins:{ legend:{ position:"bottom", labels:{ color: darkMode?"#E8F1F8":"#1A2B3C" } } } }}/>
+            <Scatter data={clusters} options={{
+              ...chartOptions(darkMode),
+              plugins: { legend: { position: "bottom", labels: { color: darkMode ? "#E8F1F8" : "#1A2B3C" } } },
+            }} />
           </div>
         )}
       </div>
