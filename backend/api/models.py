@@ -97,7 +97,11 @@ class JobOffer(models.Model):
     )
     source = models.CharField(
         max_length=50, blank=True, default='',
-        help_text="Origine de l'offre : rekrute, emploima, marocannonces, manual…"
+        help_text="Nom du site source : rekrute, emploima, marocannonces, manual…"
+    )
+    source_url = models.URLField(
+        blank=True, default='',
+        help_text="URL directe de l'offre sur le site source"
     )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -105,3 +109,23 @@ class JobOffer(models.Model):
 
     def __str__(self):
         return f"{self.title} - {self.company}"
+
+
+class SearchHistory(models.Model):
+    """Historique des recherches effectuées par un utilisateur."""
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='search_history'
+    )
+    keyword = models.CharField(max_length=255)
+    source = models.CharField(
+        max_length=50, default='dataset',
+        help_text="Mode utilisé : dataset, rekrute, emploima, marocannonces"
+    )
+    results_count = models.IntegerField(default=0)
+    searched_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-searched_at']
+
+    def __str__(self):
+        return f"{self.user.username} — '{self.keyword}' ({self.source})"
