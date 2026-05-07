@@ -14,7 +14,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ..models import UserProfile
+from ..models import UserProfile, SearchHistory
 from ..serializers import UserProfileSerializer
 
 
@@ -194,3 +194,24 @@ class UserProfileRetrieveUpdateView(generics.RetrieveUpdateAPIView):
         """PATCH — Mise à jour partielle."""
         kwargs['partial'] = True
         return self.update(request, *args, **kwargs)
+
+
+class SearchHistoryView(APIView):
+    """
+    Retourne l'historique des recherches de l'utilisateur connecté.
+    GET /api/profile/history/?limit=20
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        limit = int(request.query_params.get('limit', 20))
+        history = SearchHistory.objects.filter(
+            user=request.user
+        ).values(
+            'id', 'keyword', 'source', 'results_count', 'searched_at'
+        )[:limit]
+
+        return Response({
+            "count": len(list(history)),
+            "history": list(history)
+        })
