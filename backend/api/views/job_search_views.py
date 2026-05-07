@@ -18,8 +18,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ..models import UserProfile, JobOffer
-from ..utils.matching_utils import parse_skills, cosine_score, tokenize_text
+from ..models import UserProfile, JobOffer, SearchHistory
+from ..utils.matching_utils import parse_skills, tokenize_text, compute_weighted_score
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +74,12 @@ def _save_scraped_offers(raw_offers: list, source_site: str) -> int:
         if JobOffer.objects.filter(title=title, company=company).exists():
             continue
 
+        # Extraire l'URL depuis "NomSite | https://..."
+        raw_source = data.get('source') or ''
+        source_url = ''
+        if '|' in raw_source:
+            source_url = raw_source.split('|', 1)[1].strip()
+
         posted_date = None
         raw_date = data.get('posted_date')
         if raw_date:
@@ -96,6 +102,7 @@ def _save_scraped_offers(raw_offers: list, source_site: str) -> int:
                 contract_type=(data.get('contract_type') or '')[:100],
                 posted_date=posted_date,
                 source=source_site,
+                source_url=source_url,
                 is_active=True,
             )
             saved += 1
@@ -193,6 +200,15 @@ class JobSearchView(APIView):
             ).distinct()
 
             results = _build_results(offres_qs, cv_tokens)
+
+            # Sauvegarder dans l'historique
+            SearchHistory.objects.create(
+                user=request.user,
+                keyword=keyword,
+                source=source,
+                results_count=len(results),
+            )
+
             return Response({
                 "source": "dataset",
                 "keyword": keyword,
@@ -244,6 +260,15 @@ class JobSearchView(APIView):
         ).distinct()
 
         results = _build_results(offres_qs, cv_tokens)
+
+        # Sauvegarder dans l'historique
+        SearchHistory.objects.create(
+            user=request.user,
+            keyword=keyword,
+            source=source,
+            results_count=len(results),
+        )
+
         return Response({
             "source": source,
             "keyword": keyword,
