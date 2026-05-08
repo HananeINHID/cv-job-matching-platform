@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { Sun, Moon, UserPlus, AlertTriangle, CheckCircle } from "lucide-react";
 import API from "../services/api";
 
 function RegisterPage() {
@@ -9,12 +10,16 @@ function RegisterPage() {
   const [confirm, setConfirm]   = useState("");
   const [erreur, setErreur]     = useState("");
   const [succes, setSucces]     = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem("darkMode");
+    if (saved !== null) return saved === "true";
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  });
   const navigate = useNavigate();
 
   useEffect(() => {
-    setDarkMode(window.matchMedia("(prefers-color-scheme: dark)").matches);
-  }, []);
+    localStorage.setItem("darkMode", darkMode);
+  }, [darkMode]);
 
   const c = {
     pageBg:      darkMode ? "#0D1B2A" : "#F0F4F8",
@@ -101,9 +106,10 @@ function RegisterPage() {
         position: "fixed", top: "20px", right: "20px",
         width: "42px", height: "42px", borderRadius: "50%",
         border: `1px solid ${c.cardBorder}`, backgroundColor: c.toggleBg,
-        fontSize: "18px", cursor: "pointer", zIndex: 100,
+        cursor: "pointer", zIndex: 100,
+        display: "flex", alignItems: "center", justifyContent: "center"
       }}>
-        {darkMode ? "☀️" : "🌙"}
+        {darkMode ? <Sun size={20} color="#FFB300" /> : <Moon size={20} color="#5A7184" />}
       </button>
 
       <div style={{
@@ -118,8 +124,10 @@ function RegisterPage() {
             width: "56px", height: "56px", borderRadius: "14px",
             background: c.boutonBg, margin: "0 auto 1rem",
             display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: "26px", boxShadow: "0 8px 20px rgba(14,140,140,0.3)",
-          }}>✨</div>
+            boxShadow: "0 8px 20px rgba(14,140,140,0.3)",
+          }}>
+            <UserPlus size={28} color="white" />
+          </div>
           <h1 style={{ fontSize: "24px", fontWeight: "700", color: c.textePrimaire, margin: "0 0 6px 0" }}>
             Créer un compte
           </h1>
@@ -134,8 +142,9 @@ function RegisterPage() {
             backgroundColor: c.successBg, border: `1px solid ${c.successBorder}`,
             color: c.successTexte, padding: "12px 16px", borderRadius: "12px",
             fontSize: "13px", marginBottom: "20px", textAlign: "center",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: "8px"
           }}>
-            ✅ Compte créé ! Redirection vers le login...
+            <CheckCircle size={16} /> Compte créé ! Redirection vers le login...
           </div>
         )}
 
@@ -145,8 +154,9 @@ function RegisterPage() {
             backgroundColor: c.erreurBg, border: `1px solid ${c.erreurBorder}`,
             color: c.erreurTexte, padding: "12px 16px", borderRadius: "12px",
             fontSize: "13px", marginBottom: "20px",
+            display: "flex", alignItems: "center", gap: "8px"
           }}>
-            ⚠️ {erreur}
+            <AlertTriangle size={16} /> {erreur}
           </div>
         )}
 

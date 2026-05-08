@@ -1,20 +1,41 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import API from "../services/api";
+import { 
+  Briefcase, User, Sun, Moon, Search, ArrowRight, 
+  Zap, Users, GraduationCap, Edit2, Database, Globe, History, RefreshCw, LogOut
+} from "lucide-react";
+import API, { getHistory } from "../services/api";
+
+const SOURCES = [
+  { value: "dataset",       label: "Dataset local",      icon: Database },
+  { value: "rekrute",       label: "Rekrute",            icon: Globe },
+  { value: "emploima",      label: "Emploi.ma",          icon: Globe },
+  { value: "marocannonces", label: "MarocAnnonces",      icon: Globe },
+  { value: "linkedin",      label: "LinkedIn",           icon: Globe },
+];
 
 function DashboardPage() {
   const navigate = useNavigate();
-  const [darkMode, setDarkMode] = useState(false);
-  const [profil, setProfil]     = useState(null);
-  const [loading, setLoading]   = useState(true);
-  const [recherche, setRecherche] = useState("");
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem("darkMode");
+    if (saved !== null) return saved === "true";
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  });
+  const [profil,     setProfil]    = useState(null);
+  const [loading,    setLoading]   = useState(true);
+  const [recherche,  setRecherche] = useState("");
+  const [source,     setSource]    = useState("dataset");
+  const [historique, setHistorique]= useState([]);
 
   useEffect(() => {
-    setDarkMode(window.matchMedia("(prefers-color-scheme: dark)").matches);
-  }, []);
+    localStorage.setItem("darkMode", darkMode);
+  }, [darkMode]);
 
   // Extraire le username du token JWT
   const getNomDepuisToken = () => {
+    const savedNom = localStorage.getItem("userNom");
+    if (savedNom) return savedNom;
+
     const token = localStorage.getItem("token");
     if (!token) return "Utilisateur";
     try {
@@ -23,15 +44,19 @@ function DashboardPage() {
     } catch { return "Utilisateur"; }
   };
 
+  // Charger profil + historique
   useEffect(() => {
     const charger = async () => {
       const token = localStorage.getItem("token");
       if (!token) { setLoading(false); return; }
+
+      // Profil
       try {
         const response = await API.get("/profile/");
         const data = response.data;
-        // Le serializer retourne hard_skills_list / soft_skills_list comme listes.
-        // On normalise pour que le reste du composant lise toujours data.hard_skills etc.
+        if (data?.personal_info?.nom) {
+          localStorage.setItem("userNom", data.personal_info.nom);
+        }
         setProfil({
           ...data,
           hard_skills: Array.isArray(data.hard_skills_list) ? data.hard_skills_list
@@ -39,12 +64,19 @@ function DashboardPage() {
           soft_skills: Array.isArray(data.soft_skills_list) ? data.soft_skills_list
                        : Array.isArray(data.soft_skills) ? data.soft_skills : [],
         });
-      } catch (error) {
-        // MODE TEST : on ne redirige pas vers login
+      } catch {
         console.log("Backend pas prêt, utilisation des données mock");
-      } finally {
-        setLoading(false);
       }
+
+      // Historique — silencieux si l'endpoint n'existe pas encore
+      try {
+        const hist = await getHistory();
+        setHistorique(Array.isArray(hist.data) ? hist.data : []);
+      } catch {
+        setHistorique([]);
+      }
+
+      setLoading(false);
     };
     charger();
   }, []);
@@ -84,6 +116,9 @@ function DashboardPage() {
   const hardSkills = data.hard_skills_list || data.hard_skills || [];
   const softSkills = data.soft_skills_list || data.soft_skills || [];
 
+  const lancerRecherche = () =>
+    navigate("/results", { state: { recherche, source } });
+
   if (loading) return (
     <div style={{ minHeight:"100vh", width:"100%", backgroundColor: c.pageBg,
       display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -109,8 +144,9 @@ function DashboardPage() {
           fontSize: "20px", fontWeight: "700",
           background: c.boutonBg,
           WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+          display: "flex", alignItems: "center", gap: "8px"
         }}>
-          💼 CV Matching
+          <Briefcase size={22} style={{ color: "#0E8C8C" }} /> CV Matching
         </span>
         <div style={{ display:"flex", alignItems:"center", gap:"12px" }}>
           <span style={{
@@ -120,22 +156,24 @@ function DashboardPage() {
             padding: "6px 14px", borderRadius: "20px",
             border: `1px solid ${darkMode ? "rgba(14,140,140,0.3)" : "rgba(14,140,140,0.2)"}`,
           }}>
-            👤 {getNomDepuisToken()}
+            <User size={14} /> {profil?.personal_info?.nom || getNomDepuisToken()}
           </span>
           <button onClick={() => setDarkMode(!darkMode)} style={{
             width:"38px", height:"38px", borderRadius:"50%",
             border: `1px solid ${c.cardBorder}`, backgroundColor: c.toggleBg,
             fontSize:"16px", cursor:"pointer",
+            display: "flex", alignItems: "center", justifyContent: "center"
           }}>
-            {darkMode ? "☀️" : "🌙"}
+            {darkMode ? <Sun size={18} color="#FFB300" /> : <Moon size={18} color="#5A7184" />}
           </button>
           <button onClick={() => { localStorage.removeItem("token"); navigate("/login"); }}
             style={{
               padding: "8px 16px", backgroundColor: c.decoBg,
               color: c.decoText, border: `1px solid ${c.decoBorder}`,
               borderRadius: "10px", fontSize: "13px", fontWeight: "600", cursor: "pointer",
+              display: "flex", alignItems: "center", gap: "6px"
             }}>
-            Déconnexion
+            <LogOut size={14} /> Déconnexion
           </button>
         </div>
       </nav>
@@ -146,7 +184,7 @@ function DashboardPage() {
         {/* Bienvenue */}
         <div style={{ marginBottom:"28px" }}>
           <h1 style={{ fontSize:"28px", fontWeight:"700", color: c.textePrimaire, marginBottom:"6px" }}>
-            Bonjour, {getNomDepuisToken()} 👋
+            Bonjour, {data.personal_info?.nom?.split(" ")[0]} 
           </h1>
           <p style={{ fontSize:"15px", color: c.texteSecondaire }}>
             {data.personal_info?.titre || "Complétez votre profil pour commencer"}
@@ -154,16 +192,18 @@ function DashboardPage() {
           </p>
         </div>
 
-        {/* Barre de recherche */}
+        {/* ── Barre de recherche avec sélecteur de source ── */}
         <div style={{
           backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`,
           borderRadius: "16px", padding: "1.5rem", marginBottom: "20px",
           boxShadow: c.cardShadow,
         }}>
-          <h2 style={{ fontSize:"16px", fontWeight:"700", color: c.tealColor, marginBottom:"14px" }}>
-            🔍 Trouver des offres
+          <h2 style={{ fontSize:"16px", fontWeight:"700", color: c.tealColor, marginBottom:"14px", display: "flex", alignItems: "center", gap: "8px" }}>
+            <Search size={18} /> Trouver des offres
           </h2>
-          <div style={{ display:"flex", gap:"10px" }}>
+
+          {/* Ligne 1 : input + bouton */}
+          <div style={{ display:"flex", gap:"10px", marginBottom:"12px" }}>
             <input
               style={{
                 flex: 1, padding: "12px 16px", borderRadius: "12px",
@@ -172,38 +212,71 @@ function DashboardPage() {
               }}
               value={recherche}
               onChange={(e) => setRecherche(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && navigate("/results", { state: { recherche } })}
+              onKeyDown={(e) => e.key === "Enter" && lancerRecherche()}
               onFocus={(e) => e.target.style.borderColor = "#0E8C8C"}
               onBlur={(e) => e.target.style.borderColor = c.inputBorder}
               placeholder="Ex: Développeur React, Data Scientist..."
             />
             <button
-              onClick={() => navigate("/results", { state: { recherche } })}
+              onClick={lancerRecherche}
               style={{
                 padding: "12px 24px", background: c.boutonBg, color: "white",
                 border: "none", borderRadius: "12px", fontSize: "14px",
                 fontWeight: "600", cursor: "pointer", whiteSpace: "nowrap",
                 boxShadow: "0 6px 16px rgba(14,140,140,0.3)",
+                display: "flex", alignItems: "center", gap: "8px"
               }}>
-              Lancer →
+              Lancer <ArrowRight size={16} />
             </button>
+          </div>
+
+          {/* Ligne 2 : sélecteur de source */}
+          <div style={{ display:"flex", alignItems:"center", gap:"10px", flexWrap:"wrap" }}>
+            <span style={{ fontSize:"13px", fontWeight:"600", color: c.texteLabel }}>
+              Source :
+            </span>
+            {SOURCES.map(({ value, label, icon: Icon }) => (
+              <button
+                key={value}
+                onClick={() => setSource(value)}
+                style={{
+                  padding: "6px 16px",
+                  borderRadius: "20px",
+                  fontSize: "12px",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                  transition: "all 0.2s",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  border: source === value
+                    ? `1.5px solid ${c.tealColor}`
+                    : `1.5px solid ${c.inputBorder}`,
+                  backgroundColor: source === value ? c.tagTealBg : "transparent",
+                  color: source === value ? c.tealColor : c.texteSecondaire,
+                }}
+              >
+                <Icon size={14} />
+                {label}
+              </button>
+            ))}
           </div>
         </div>
 
         {/* Stats */}
         <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:"12px", marginBottom:"20px" }}>
           {[
-            { label: "Hard Skills", valeur: hardSkills.length, icon: "⚡" },
-            { label: "Soft Skills", valeur: softSkills.length, icon: "🤝" },
-            { label: "Expériences", valeur: data.experiences?.length || 0, icon: "💼" },
-            { label: "Formations", valeur: data.formations?.length || 0, icon: "🎓" },
+            { label: "Hard Skills", valeur: hardSkills.length, icon: <Zap size={20} /> },
+            { label: "Soft Skills", valeur: softSkills.length, icon: <Users size={20} /> },
+            { label: "Expériences", valeur: data.experiences?.length || 0, icon: <Briefcase size={20} /> },
+            { label: "Formations",  valeur: data.formations?.length  || 0, icon: <GraduationCap size={20} /> },
           ].map(({ label, valeur, icon }) => (
             <div key={label} style={{
               backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`,
               borderRadius: "14px", padding: "1.2rem", textAlign: "center",
               boxShadow: c.cardShadow,
             }}>
-              <div style={{ fontSize:"24px", marginBottom:"6px" }}>{icon}</div>
+              <div style={{ marginBottom:"6px", color: c.tealColor }}>{icon}</div>
               <p style={{ fontSize:"11px", color: c.texteSecondaire, marginBottom:"4px", fontWeight:"600", textTransform:"uppercase", letterSpacing:"0.5px" }}>{label}</p>
               <p style={{ fontSize:"28px", fontWeight:"700", color: c.statNumColor, margin:0 }}>{valeur}</p>
             </div>
@@ -215,16 +288,16 @@ function DashboardPage() {
 
           {/* Compétences */}
           <div style={{ backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`, borderRadius:"16px", padding:"1.5rem", boxShadow: c.cardShadow }}>
-            <h3 style={{ fontSize:"14px", fontWeight:"700", color: c.tealColor, marginBottom:"14px" }}>
-              ⚡ Compétences techniques
+            <h3 style={{ fontSize:"14px", fontWeight:"700", color: c.tealColor, marginBottom:"14px", display: "flex", alignItems: "center", gap: "8px" }}>
+              <Zap size={16} /> Compétences techniques
             </h3>
             <div style={{ display:"flex", flexWrap:"wrap", gap:"8px", marginBottom:"16px" }}>
               {hardSkills.length > 0 ? hardSkills.map((s) => (
                 <span key={s} style={{ backgroundColor: c.tagTealBg, color: c.tagTealText, padding:"5px 12px", borderRadius:"20px", fontSize:"12px", fontWeight:"600" }}>{s}</span>
               )) : <p style={{ fontSize:"13px", color: c.texteSecondaire }}>Aucune compétence ajoutée</p>}
             </div>
-            <h3 style={{ fontSize:"14px", fontWeight:"700", color: c.accent, marginBottom:"14px" }}>
-              🤝 Soft Skills
+            <h3 style={{ fontSize:"14px", fontWeight:"700", color: c.accent, marginBottom:"14px", display: "flex", alignItems: "center", gap: "8px" }}>
+              <Users size={16} /> Soft Skills
             </h3>
             <div style={{ display:"flex", flexWrap:"wrap", gap:"8px" }}>
               {softSkills.length > 0 ? softSkills.map((s) => (
@@ -235,8 +308,8 @@ function DashboardPage() {
 
           {/* Expériences & Formations */}
           <div style={{ backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`, borderRadius:"16px", padding:"1.5rem", boxShadow: c.cardShadow }}>
-            <h3 style={{ fontSize:"14px", fontWeight:"700", color: c.tealColor, marginBottom:"14px" }}>
-              💼 Expériences
+            <h3 style={{ fontSize:"14px", fontWeight:"700", color: c.tealColor, marginBottom:"14px", display: "flex", alignItems: "center", gap: "8px" }}>
+              <Briefcase size={16} /> Expériences
             </h3>
             {data.experiences?.length > 0 ? data.experiences.map((exp, i) => (
               <div key={i} style={{ borderLeft:`3px solid ${c.tealColor}`, paddingLeft:"12px", marginBottom:"12px" }}>
@@ -245,8 +318,8 @@ function DashboardPage() {
               </div>
             )) : <p style={{ fontSize:"13px", color: c.texteSecondaire }}>Aucune expérience ajoutée</p>}
 
-            <h3 style={{ fontSize:"14px", fontWeight:"700", color: c.accent, margin:"16px 0 14px" }}>
-              🎓 Formations
+            <h3 style={{ fontSize:"14px", fontWeight:"700", color: c.accent, margin:"16px 0 14px", display: "flex", alignItems: "center", gap: "8px" }}>
+              <GraduationCap size={16} /> Formations
             </h3>
             {data.formations?.length > 0 ? data.formations.map((form, i) => (
               <div key={i} style={{ borderLeft:`3px solid ${c.accent}`, paddingLeft:"12px", marginBottom:"12px" }}>
@@ -257,13 +330,68 @@ function DashboardPage() {
           </div>
         </div>
 
+        {/* ── Historique des recherches ── */}
+        {historique.length > 0 && (
+          <div style={{
+            backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`,
+            borderRadius: "16px", padding: "1.5rem", marginBottom: "20px",
+            boxShadow: c.cardShadow,
+          }}>
+            <h2 style={{ fontSize:"16px", fontWeight:"700", color: c.tealColor, marginBottom:"14px" }}>
+              🕑 Historique des recherches
+            </h2>
+            <div style={{ display:"flex", flexDirection:"column", gap:"10px" }}>
+              {historique.map((item, i) => {
+                const srcLabel = SOURCES.find(s => s.value === item.source)?.label || item.source || "—";
+                const date = item.date
+                  ? new Date(item.date).toLocaleDateString("fr-FR", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" })
+                  : null;
+                return (
+                  <div key={i} style={{
+                    display:"flex", alignItems:"center", justifyContent:"space-between",
+                    padding:"10px 14px", borderRadius:"12px",
+                    backgroundColor: darkMode ? "#0F2030" : "#F7FAFD",
+                    border: `1px solid ${c.inputBorder}`,
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <Search size={16} color={c.texteSecondaire} />
+                      <div>
+                        <p style={{ fontSize:"14px", fontWeight:"600", color: c.textePrimaire, margin:0 }}>
+                          {item.query || item.recherche || "—"}
+                        </p>
+                        <p style={{ fontSize:"12px", color: c.texteSecondaire, margin:"3px 0 0" }}>
+                          {srcLabel}{date ? ` · ${date}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => navigate("/results", {
+                        state: { recherche: item.query || item.recherche, source: item.source || "dataset" }
+                      })}
+                      style={{
+                        padding:"6px 14px", borderRadius:"8px", fontSize:"12px",
+                        fontWeight:"600", cursor:"pointer",
+                        backgroundColor: c.tagTealBg, color: c.tealColor,
+                        border: `1px solid ${darkMode ? "rgba(14,140,140,0.3)" : "rgba(14,140,140,0.2)"}`,
+                        display: "flex", alignItems: "center", gap: "6px"
+                      }}>
+                      Relancer <RefreshCw size={12} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Bouton modifier */}
         <button onClick={() => navigate("/cv-form")} style={{
           padding:"12px 28px", backgroundColor:"transparent",
           color: c.tealColor, border:`1.5px solid ${c.tealColor}`,
           borderRadius:"12px", fontSize:"14px", fontWeight:"600", cursor:"pointer",
+          display: "flex", alignItems: "center", gap: "8px"
         }}>
-          ✏️ Modifier mon profil
+          <Edit2 size={16} /> Modifier mon profil
         </button>
       </div>
     </div>

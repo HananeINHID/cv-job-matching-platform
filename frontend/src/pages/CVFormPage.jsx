@@ -1,10 +1,17 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { 
+  Briefcase, ArrowLeft, Sun, Moon, AlertTriangle, X, Plus, Save, User 
+} from "lucide-react";
 import API from "../services/api";
 
 function CVFormPage() {
   const navigate = useNavigate();
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem("darkMode");
+    if (saved !== null) return saved === "true";
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  });
   const [nom, setNom]             = useState("");
   const [email, setEmail]         = useState("");
   const [telephone, setTelephone] = useState("");
@@ -23,9 +30,21 @@ function CVFormPage() {
   const [erreur, setErreur] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const getNomDepuisToken = () => {
+    const savedNom = localStorage.getItem("userNom");
+    if (savedNom) return savedNom;
+
+    const token = localStorage.getItem("token");
+    if (!token) return "Utilisateur";
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      return payload.username || "Utilisateur";
+    } catch { return "Utilisateur"; }
+  };
+
   useEffect(() => {
-    setDarkMode(window.matchMedia("(prefers-color-scheme: dark)").matches);
-  }, []);
+    localStorage.setItem("darkMode", darkMode);
+  }, [darkMode]);
 
   const c = {
     pageBg:      darkMode ? "#0D1B2A" : "#F0F4F8",
@@ -130,23 +149,36 @@ function CVFormPage() {
           fontSize: "18px", fontWeight: "700",
           background: c.boutonBg, WebkitBackgroundClip: "text",
           WebkitTextFillColor: "transparent",
+          display: "flex", alignItems: "center", gap: "8px"
         }}>
-          💼 CV Matching
+          <Briefcase size={20} style={{ color: "#0E8C8C" }} /> CV Matching
         </span>
         <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+          <span style={{
+            fontSize: "13px", fontWeight: "600",
+            color: c.sectionTitreColor,
+            backgroundColor: c.tagTealBg,
+            padding: "6px 14px", borderRadius: "20px",
+            border: `1px solid ${darkMode ? "rgba(14,140,140,0.3)" : "rgba(14,140,140,0.2)"}`,
+            display: "flex", alignItems: "center", gap: "6px"
+          }}>
+            <User size={14} /> {getNomDepuisToken()}
+          </span>
           <button onClick={() => navigate("/dashboard")} style={{
             padding: "8px 16px", background: "transparent",
             color: c.texteSecondaire, border: `1px solid ${c.cardBorder}`,
             borderRadius: "10px", fontSize: "13px", cursor: "pointer",
+            display: "flex", alignItems: "center", gap: "6px"
           }}>
-            ← Dashboard
+            <ArrowLeft size={14} /> Dashboard
           </button>
           <button onClick={() => setDarkMode(!darkMode)} style={{
             width: "38px", height: "38px", borderRadius: "50%",
             border: `1px solid ${c.cardBorder}`, backgroundColor: c.toggleBg,
             fontSize: "16px", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center"
           }}>
-            {darkMode ? "☀️" : "🌙"}
+            {darkMode ? <Sun size={18} color="#FFB300" /> : <Moon size={18} color="#5A7184" />}
           </button>
         </div>
       </nav>
@@ -166,8 +198,9 @@ function CVFormPage() {
             backgroundColor: c.erreurBg, border: `1px solid ${c.erreurBorder}`,
             color: c.erreurTexte, padding: "12px 16px", borderRadius: "12px",
             fontSize: "13px", marginBottom: "20px",
+            display: "flex", alignItems: "center", gap: "8px"
           }}>
-            ⚠️ {erreur}
+            <AlertTriangle size={16} /> {erreur}
           </div>
         )}
 
@@ -239,8 +272,11 @@ function CVFormPage() {
                   border: `1px solid ${darkMode ? "rgba(14,140,140,0.3)" : "rgba(14,140,140,0.2)"}`,
                 }}>
                   {s}
+                  {s}
                   <span onClick={() => setHardSkills(hardSkills.filter(x => x !== s))}
-                    style={{ cursor: "pointer", fontSize: "11px", opacity: 0.7 }}>✕</span>
+                    style={{ cursor: "pointer", display: "flex", alignItems: "center", opacity: 0.7 }}>
+                    <X size={12} />
+                  </span>
                 </span>
               ))}
             </div>
@@ -275,8 +311,11 @@ function CVFormPage() {
                   border: `1px solid ${darkMode ? "rgba(255,107,71,0.3)" : "rgba(255,107,71,0.2)"}`,
                 }}>
                   {s}
+                  {s}
                   <span onClick={() => setSoftSkills(softSkills.filter(x => x !== s))}
-                    style={{ cursor: "pointer", fontSize: "11px", opacity: 0.7 }}>✕</span>
+                    style={{ cursor: "pointer", display: "flex", alignItems: "center", opacity: 0.7 }}>
+                    <X size={12} />
+                  </span>
                 </span>
               ))}
             </div>
@@ -298,12 +337,12 @@ function CVFormPage() {
                   Expérience {i + 1}
                 </span>
                 {experiences.length > 1 && (
-                  <button onClick={() => setExperiences(experiences.filter((_, x) => x !== i))}
-                    style={{ padding: "4px 10px", backgroundColor: c.suppressBg,
-                      color: c.suppressText, border: "none", borderRadius: "8px",
-                      fontSize: "12px", cursor: "pointer" }}>
-                    Supprimer
-                  </button>
+                    <button onClick={() => setExperiences(experiences.filter((_, x) => x !== i))}
+                      style={{ padding: "4px 10px", backgroundColor: c.suppressBg,
+                        color: c.suppressText, border: "none", borderRadius: "8px",
+                        fontSize: "12px", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}>
+                      <X size={12} /> Supprimer
+                    </button>
                 )}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
@@ -338,8 +377,9 @@ function CVFormPage() {
           <button onClick={() => setExperiences([...experiences, { poste:"", entreprise:"", debut:"", fin:"", description:"" }])}
             style={{ padding: "10px 18px", backgroundColor: "transparent",
               color: c.sectionTitreColor, border: `1.5px solid ${c.sectionTitreColor}`,
-              borderRadius: "10px", fontSize: "13px", fontWeight: "600", cursor: "pointer" }}>
-            + Ajouter une expérience
+              borderRadius: "10px", fontSize: "13px", fontWeight: "600", cursor: "pointer",
+              display: "flex", alignItems: "center", gap: "8px" }}>
+            <Plus size={16} /> Ajouter une expérience
           </button>
         </div>
 
@@ -358,12 +398,12 @@ function CVFormPage() {
                   Formation {i + 1}
                 </span>
                 {formations.length > 1 && (
-                  <button onClick={() => setFormations(formations.filter((_, x) => x !== i))}
-                    style={{ padding: "4px 10px", backgroundColor: c.suppressBg,
-                      color: c.suppressText, border: "none", borderRadius: "8px",
-                      fontSize: "12px", cursor: "pointer" }}>
-                    Supprimer
-                  </button>
+                    <button onClick={() => setFormations(formations.filter((_, x) => x !== i))}
+                      style={{ padding: "4px 10px", backgroundColor: c.suppressBg,
+                        color: c.suppressText, border: "none", borderRadius: "8px",
+                        fontSize: "12px", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}>
+                      <X size={12} /> Supprimer
+                    </button>
                 )}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
@@ -389,24 +429,25 @@ function CVFormPage() {
           <button onClick={() => setFormations([...formations, { diplome:"", etablissement:"", annee:"", domaine:"" }])}
             style={{ padding: "10px 18px", backgroundColor: "transparent",
               color: c.sectionTitreColor, border: `1.5px solid ${c.sectionTitreColor}`,
-              borderRadius: "10px", fontSize: "13px", fontWeight: "600", cursor: "pointer" }}>
-            + Ajouter une formation
+              borderRadius: "10px", fontSize: "13px", fontWeight: "600", cursor: "pointer",
+              display: "flex", alignItems: "center", gap: "8px" }}>
+            <Plus size={16} /> Ajouter une formation
           </button>
         </div>
 
-        {/* Bouton final */}
-        <button onClick={handleSubmit}
-          style={{
-            width: "100%", padding: "16px",
-            background: loading ? "#888" : c.boutonBg,
-            color: "white", border: "none", borderRadius: "14px",
-            fontSize: "16px", fontWeight: "700", cursor: loading ? "not-allowed" : "pointer",
-            boxShadow: "0 8px 24px rgba(14,140,140,0.35)", marginBottom: "2rem",
-          }}
-          disabled={loading}
-        >
-          {loading ? "Enregistrement..." : "Enregistrer et continuer →"}
-        </button>
+          <button onClick={handleSubmit}
+            style={{
+              width: "100%", padding: "16px",
+              background: loading ? "#888" : c.boutonBg,
+              color: "white", border: "none", borderRadius: "14px",
+              fontSize: "16px", fontWeight: "700", cursor: loading ? "not-allowed" : "pointer",
+              boxShadow: "0 8px 24px rgba(14,140,140,0.35)", marginBottom: "2rem",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: "10px"
+            }}
+            disabled={loading}
+          >
+            {loading ? "Enregistrement..." : <>Enregistrer et continuer <Save size={18} /></>}
+          </button>
       </div>
     </div>
   );

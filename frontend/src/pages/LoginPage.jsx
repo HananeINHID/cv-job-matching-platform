@@ -1,19 +1,23 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { Sun, Moon, Briefcase, AlertTriangle } from "lucide-react";
 import API from "../services/api";
 
 function LoginPage() {
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
   const [erreur, setErreur]     = useState("");
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem("darkMode");
+    if (saved !== null) return saved === "true";
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  });
 
   const navigate = useNavigate();
 
   useEffect(() => {
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    setDarkMode(prefersDark);
-  }, []);
+    localStorage.setItem("darkMode", darkMode);
+  }, [darkMode]);
 
   const handleLogin = async () => {
     setErreur("");
@@ -94,7 +98,6 @@ function LoginPage() {
           borderRadius: "50%",
           border: `1px solid ${couleurs.cardBorder}`,
           backgroundColor: couleurs.toggleBg,
-          fontSize: "18px",
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
@@ -103,7 +106,7 @@ function LoginPage() {
           zIndex: 100,
         }}
       >
-        {darkMode ? "☀️" : "🌙"}
+        {darkMode ? <Sun size={20} color="#FFB300" /> : <Moon size={20} color="#5A7184" />}
       </button>
 
       {/* ── Carte Login ── */}
@@ -130,10 +133,9 @@ function LoginPage() {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: "26px",
             boxShadow: "0 8px 20px rgba(14,140,140,0.3)",
           }}>
-            💼
+            <Briefcase size={28} color="white" />
           </div>
           <h1 style={{
             fontSize: "24px",
@@ -167,7 +169,7 @@ function LoginPage() {
             alignItems: "center",
             gap: "8px",
           }}>
-            ⚠️ {erreur}
+            <AlertTriangle size={16} /> {erreur}
           </div>
         )}
 
