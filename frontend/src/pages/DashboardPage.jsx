@@ -33,6 +33,9 @@ function DashboardPage() {
 
   // Extraire le username du token JWT
   const getNomDepuisToken = () => {
+    const savedNom = localStorage.getItem("userNom");
+    if (savedNom) return savedNom;
+
     const token = localStorage.getItem("token");
     if (!token) return "Utilisateur";
     try {
@@ -51,6 +54,9 @@ function DashboardPage() {
       try {
         const response = await API.get("/profile/");
         const data = response.data;
+        if (data?.personal_info?.nom) {
+          localStorage.setItem("userNom", data.personal_info.nom);
+        }
         setProfil({
           ...data,
           hard_skills: Array.isArray(data.hard_skills_list) ? data.hard_skills_list
