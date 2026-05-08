@@ -71,7 +71,8 @@ function DashboardPage() {
       // Historique — silencieux si l'endpoint n'existe pas encore
       try {
         const hist = await getHistory();
-        setHistorique(Array.isArray(hist.data) ? hist.data : []);
+        const histData = hist.data?.history || hist.data;
+        setHistorique(Array.isArray(histData) ? histData : []);
       } catch {
         setHistorique([]);
       }
@@ -379,8 +380,8 @@ function DashboardPage() {
             <div style={{ display:"flex", flexDirection:"column", gap:"10px" }}>
               {historique.map((item, i) => {
                 const srcLabel = SOURCES.find(s => s.value === item.source)?.label || item.source || "—";
-                const date = item.date
-                  ? new Date(item.date).toLocaleDateString("fr-FR", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" })
+                const date = item.searched_at
+                  ? new Date(item.searched_at).toLocaleDateString("fr-FR", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" })
                   : null;
                 return (
                   <div key={i} style={{
@@ -393,7 +394,7 @@ function DashboardPage() {
                       <Search size={16} color={c.texteSecondaire} />
                       <div>
                         <p style={{ fontSize:"14px", fontWeight:"600", color: c.textePrimaire, margin:0 }}>
-                          {item.query || item.recherche || "—"}
+                          {item.keyword || item.query || "—"}
                         </p>
                         <p style={{ fontSize:"12px", color: c.texteSecondaire, margin:"3px 0 0" }}>
                           {srcLabel}{date ? ` · ${date}` : ""}
@@ -402,7 +403,7 @@ function DashboardPage() {
                     </div>
                     <button
                       onClick={() => navigate("/results", {
-                        state: { recherche: item.query || item.recherche, source: item.source || "dataset" }
+                        state: { recherche: item.keyword || item.query, source: item.source || "dataset" }
                       })}
                       style={{
                         padding:"6px 14px", borderRadius:"8px", fontSize:"12px",

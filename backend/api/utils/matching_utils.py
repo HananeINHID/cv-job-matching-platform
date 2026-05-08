@@ -15,7 +15,15 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 # Chemins vers les modèles ML pré-entraînés
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# __file__ = backend/api/utils/matching_utils.py
+# 4x dirname => project root (parent of backend/)
+BASE_DIR = os.path.dirname(
+    os.path.dirname(
+        os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__))
+        )
+    )
+)
 ML_MODELS_PATH = os.path.join(BASE_DIR, 'ml_models')
 
 _VECTORIZER = None
@@ -25,12 +33,17 @@ def _load_models():
     global _VECTORIZER, _KMEANS
     if _VECTORIZER is None:
         try:
-            with open(os.path.join(ML_MODELS_PATH, 'vectorizer_tfidf.pkl'), 'rb') as f:
-                _VECTORIZER = pickle.load(f)
-            with open(os.path.join(ML_MODELS_PATH, 'kmeans_model.pkl'), 'rb') as f:
-                _KMEANS = pickle.load(f)
-        except Exception:
-            pass
+            import warnings
+            import sklearn
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")  # ignore sklearn version mismatch
+                with open(os.path.join(ML_MODELS_PATH, 'vectorizer_tfidf.pkl'), 'rb') as f:
+                    _VECTORIZER = pickle.load(f)
+                with open(os.path.join(ML_MODELS_PATH, 'kmeans_model.pkl'), 'rb') as f:
+                    _KMEANS = pickle.load(f)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"ML models non charges: {e}")
 
 _load_models()
 
@@ -106,9 +119,11 @@ def parse_skills(raw: str) -> list[str]:
 
 def tfidf_cosine_score(text_cv: str, text_offer: str) -> float:
     """
-    Similarité cosinus TF-IDF entre deux textes (0.0 → 1.0).
-    Utilise le vectoriseur pré-entraîné si disponible.
+    Similarite cosinus TF-IDF entre deux textes (0.0 -> 1.0).
+    Utilise le vectoriseur pre-entraine si disponible.
+    Fallback automatique si le vocabulaire pre-entraine ne couvre pas les textes.
     """
+    import numpy as np
     t1 = lemmatize_and_clean(text_cv)
     t2 = lemmatize_and_clean(text_offer)
 
@@ -117,27 +132,44 @@ def tfidf_cosine_score(text_cv: str, text_offer: str) -> float:
 
     try:
         if _VECTORIZER:
-            # Mode Production : Utilise le modèle entraîné par le Data Scientist
             matrix = _VECTORIZER.transform([t1, t2])
-        else:
-            # Mode Fallback : Crée un vectoriseur à la volée
-            v = TfidfVectorizer()
-            matrix = v.fit_transform([t1, t2])
-            
+            # Si les deux vecteurs sont nuls (mots absents du vocabulaire pre-entraine),
+            # basculer sur un vectoriseur a la volee pour ne pas retourner 0 injustement.
+            norms = np.asarray(matrix.sum(axis=1)).flatten()
+            if norms[0] == 0 or norms[1] == 0:
+                raise ValueError("Vectors hors vocabulaire – fallback")
+            score = cosine_similarity(matrix[0:1], matrix[1:2])[0][0]
+            return float(score)
+    except Exception:
+        pass
+
+    # Fallback : vectoriseur a la volee sur les deux textes uniquement
+    try:
+        v = TfidfVectorizer()
+        matrix = v.fit_transform([t1, t2])
         score = cosine_similarity(matrix[0:1], matrix[1:2])[0][0]
         return float(score)
     except Exception:
         return 0.0
 
 def predict_cluster(text: str) -> int:
-    """Prédit le cluster d'une offre d'emploi (utilise le modèle K-Means)."""
+    """
+    Predit le cluster d'une offre d'emploi (utilise le modele K-Means).
+    Applique une reduction PCA si le nombre de features est incompatible.
+    """
     if not _VECTORIZER or not _KMEANS:
         return 0
     try:
         clean = lemmatize_and_clean(text)
         vector = _VECTORIZER.transform([clean])
+        expected = getattr(_KMEANS, 'n_features_in_', None)
+        if expected and vector.shape[1] != expected:
+            # Le KMeans a ete entraine avec PCA(n_components=50) – reproduire
+            from sklearn.decomposition import TruncatedSVD
+            svd = TruncatedSVD(n_components=expected, random_state=42)
+            vector = svd.fit_transform(vector)
         return int(_KMEANS.predict(vector)[0])
-    except:
+    except Exception:
         return 0
 
 
