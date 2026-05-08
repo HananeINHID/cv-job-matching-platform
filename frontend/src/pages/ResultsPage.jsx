@@ -72,7 +72,7 @@ function normaliserClusters(raw) {
   const groupes = {};
   raw.forEach((pt) => {
     const key = pt.cluster ?? pt.cluster_id ?? 0;
-    if (!groupes[key]) groupes[key] = { label: pt.label || `Cluster ${key}`, points: [] };
+    if (!groupes[key]) groupes[key] = { label: pt.cluster_label || pt.label || `Cluster ${key}`, points: [] };
     groupes[key].points.push({ x: pt.x, y: pt.y });
   });
   return {
@@ -95,6 +95,9 @@ function ResultsPage() {
   const locationParam = location.state?.locationParam || "Morocco";
 
   const getNomDepuisToken = () => {
+    const savedNom = localStorage.getItem("userNom");
+    if (savedNom) return savedNom;
+
     const token = localStorage.getItem("token");
     if (!token) return "Utilisateur";
     try {
@@ -194,8 +197,8 @@ function ResultsPage() {
 
   // ── Radar au changement d'offre ────────────────────────────────────────
   const chargerRadar = useCallback(async (offre) => {
-    if (!offre?.id || typeof offre.id !== "number" || offre.id > 1000) {
-      // Offre mock — garder le radar par défaut
+    if (!offre?.id || typeof offre.id !== "number") {
+      // Offre invalide — garder le radar par défaut
       setRadarData(MOCK_RADAR);
       return;
     }
@@ -373,7 +376,20 @@ function ResultsPage() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
 
             <div>
-              {offres.map((offre) => {
+              {offres.length === 0 ? (
+                <div style={{
+                  backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`,
+                  borderRadius: "14px", padding: "2rem", textAlign: "center",
+                  color: c.texteSecondaire
+                }}>
+                  <Briefcase size={32} style={{ opacity: 0.5, marginBottom: "1rem" }} />
+                  <p style={{ margin: 0, fontWeight: "600" }}>Aucune offre trouvée.</p>
+                  <p style={{ fontSize: "13px", marginTop: "4px" }}>
+                    Essayez de modifier votre recherche ou assurez-vous que le scraper a récupéré des données.
+                  </p>
+                </div>
+              ) : (
+                offres.map((offre) => {
                 const sc = couleurScore(offre.score);
                 const actif = offreSelectionnee?.id === offre.id;
                 return (
@@ -406,7 +422,7 @@ function ResultsPage() {
                     </span>
                   </div>
                 );
-              })}
+              }))}
             </div>
 
             {offreSelectionnee && (

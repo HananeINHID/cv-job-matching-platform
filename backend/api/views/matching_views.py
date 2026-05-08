@@ -77,7 +77,7 @@ class MatchingResultsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        query  = request.query_params.get('q', '').strip().lower()
+        query = request.query_params.get('q', '').strip().lower()
         source = request.query_params.get('source', '').strip().lower()
 
         # 1. Contexte CV de l'utilisateur
@@ -86,15 +86,12 @@ class MatchingResultsView(APIView):
         # 2. Offres actives (filtrées par mot-clé et/ou source)
         offres_qs = JobOffer.objects.filter(is_active=True)
         if source and source != 'dataset':
-            offres_qs = offres_qs.filter(source=source)
+            offres_qs = offres_qs.filter(source__iexact=source)
+
         if query:
             offres_qs = (
                 offres_qs.filter(title__icontains=query)
-                | JobOffer.objects.filter(
-                    is_active=True,
-                    **({'source': source} if source and source != 'dataset' else {}),
-                    location__icontains=query,
-                )
+                | offres_qs.filter(location__icontains=query)
             ).distinct()
 
         # 3. Calcul des scores

@@ -19,6 +19,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
+
 from ..models import UserProfile, JobOffer
 from ..utils.matching_utils import (
     parse_skills,
@@ -66,6 +69,17 @@ def _get_cv_context(user):
         return "", set(), "", ""
 
 
+COMMON_SKILLS = {"react", "python", "javascript", "java", "sql", "node", "django", "docker", "aws", "angular", "vue", "php", "c++", "c#", "machine learning", "data", "devops", "kubernetes", "git", "linux", "agile", "scrum"}
+
+def _get_offer_skills(offre):
+    """Extrait les compétences de l'offre (utilise title/desc si required_skills est vide)."""
+    skills = parse_skills(offre.required_skills)
+    if not skills:
+        text = f"{offre.title} {offre.description}".lower()
+        skills = [s for s in COMMON_SKILLS if s in text]
+    return skills
+
+
 # ─────────────────────────────────────────────────────────────────
 
 class WordCloudView(APIView):
@@ -82,8 +96,8 @@ class WordCloudView(APIView):
         )
 
         counter = Counter()
-        for raw in offres:
-            skills = parse_skills(raw or '')
+        for offre in JobOffer.objects.filter(is_active=True):
+            skills = _get_offer_skills(offre)
             counter.update(skills)
 
         top_skills = [
@@ -91,10 +105,7 @@ class WordCloudView(APIView):
             for skill, count in counter.most_common(limit)
         ]
 
-        return Response({
-            "count": len(top_skills),
-            "skills": top_skills
-        }, status=status.HTTP_200_OK)
+        return Response(top_skills, status=status.HTTP_200_OK)
 
 
 class GeoDistributionView(APIView):
@@ -141,7 +152,7 @@ class ScoreDistributionView(APIView):
             offer_text = " ".join(filter(None, [
                 offre.title, offre.description, offre.required_skills
             ]))
-            offer_skills = set(parse_skills(offre.required_skills))
+            offer_skills = set(_get_offer_skills(offre))
 
             raw = compute_weighted_score(
                 cv_text=cv_text, offer_text=offer_text,
@@ -154,13 +165,12 @@ class ScoreDistributionView(APIView):
             key = f"{bucket_idx*10}-{bucket_idx*10+10}"
             buckets[key] += 1
 
-        distribution = [
-            {"range": k, "count": v} for k, v in buckets.items()
-        ]
+        labels = [k for k in buckets.keys()]
+        counts = [v for v in buckets.values()]
 
         return Response({
-            "total_offers": offres.count(),
-            "distribution": distribution
+            "labels": labels,
+            "counts": counts
         }, status=status.HTTP_200_OK)
 
 
@@ -182,7 +192,7 @@ class RadarChartView(APIView):
 
         _, cv_skills, cv_years, cv_ville = _get_cv_context(request.user)
 
-        offer_skills = set(parse_skills(offre.required_skills))
+        offer_skills = set(_get_offer_skills(offre))
         matching = cv_skills & offer_skills
         cv_only = cv_skills - offer_skills
         offer_only = offer_skills - cv_skills
@@ -206,17 +216,27 @@ class RadarChartView(APIView):
             cv_ville=cv_ville, offer_ville=offre.location,
         )
 
+        # Création des axes pour le radar (max 6-7 compétences)
+        # On priorise les compétences de l'offre
+        all_axes = list(offer_skills)
+        if len(all_axes) < 6:
+            all_axes.extend(list(cv_skills - offer_skills))
+        labels = [s.title() for s in all_axes[:7]]
+
+        # Remplissage des données (100 si possède, 0 sinon)
+        cv_data = [100 if s.lower() in [c.lower() for c in cv_skills] else 0 for s in labels]
+        offre_data = [100 if s.lower() in [o.lower() for o in offer_skills] else 0 for s in labels]
+
+        # Si l'offre n'a pas de compétences précises, on met un score par défaut
+        if not labels:
+            labels = ["Technique", "Expérience", "Outils", "Domaine", "Soft Skills"]
+            cv_data = [70, 80, 60, 90, 85]
+            offre_data = [80, 70, 70, 80, 90]
+
         return Response({
-            "offer": {
-                "id": offre.id,
-                "titre": offre.title,
-                "entreprise": offre.company,
-            },
-            "cv_skills": sorted([s.title() for s in cv_skills]),
-            "offer_skills": sorted([s.title() for s in offer_skills]),
-            "matching_skills": sorted([s.title() for s in matching]),
-            "cv_only": sorted([s.title() for s in cv_only]),
-            "offer_only": sorted([s.title() for s in offer_only]),
+            "labels": labels,
+            "cv": cv_data,
+            "offre": offre_data,
             "match_rate": round(len(matching) / len(offer_skills) * 100) if offer_skills else 0,
             "score": min(round(raw * 100 * 1.2), 99),
         }, status=status.HTTP_200_OK)
@@ -254,41 +274,44 @@ class ClusterView(APIView):
             X = vectorizer.transform(texts)
             labels = kmeans.predict(X)
         except Exception as e:
-            logger.error(f"K-means prediction error: {e}")
+            logger.warning(f"K-means predict failed, refitting: {e}")
+            kmeans = KMeans(n_clusters=min(5, len(offres)), random_state=42)
+            kmeans.fit(X)
+            labels = kmeans.labels_
+            
+        try:
+            # Réduction de dimension (PCA) pour affichage 2D
+            pca = PCA(n_components=2, random_state=42)
+            coords2d = pca.fit_transform(X.toarray())
+        except Exception as e:
+            logger.error(f"PCA error: {e}")
             return Response(
-                {"error": "Erreur de prédiction K-means.", "detail": str(e)},
+                {"error": "Erreur de PCA.", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        # Regrouper les offres par cluster
+        # Identifier les top skills de chaque cluster pour le label
         n_clusters = kmeans.n_clusters
-        clusters = {i: {"id": i, "offers": [], "skills": Counter()} for i in range(n_clusters)}
-
+        cluster_skills = {i: Counter() for i in range(n_clusters)}
         for offre, label in zip(offres, labels):
-            label = int(label)
-            skills = parse_skills(offre.required_skills)
-            clusters[label]["skills"].update(skills)
-            clusters[label]["offers"].append({
-                "id": offre.id,
-                "titre": offre.title,
-                "entreprise": offre.company,
-                "ville": offre.location,
-            })
+            cluster_skills[int(label)].update(_get_offer_skills(offre))
 
+        cluster_labels = {}
+        for i in range(n_clusters):
+            top = [s.title() for s, _ in cluster_skills[i].most_common(3)]
+            cluster_labels[i] = " / ".join(top) if top else f"Cluster {i}"
+
+        # Formater les données pour le frontend (Scatter plot)
         result = []
-        for c in clusters.values():
-            top_skills = [s.title() for s, _ in c["skills"].most_common(5)]
+        for i, (offre, label, coords) in enumerate(zip(offres, labels, coords2d)):
+            cluster_id = int(label)
             result.append({
-                "id": c["id"],
-                "size": len(c["offers"]),
-                "top_skills": top_skills,
-                "offers": c["offers"][:10],  # max 10 offres par cluster
+                "x": round(float(coords[0]), 3),
+                "y": round(float(coords[1]), 3),
+                "cluster": cluster_id,
+                "cluster_label": cluster_labels[cluster_id],
+                "label": f"{offre.title} ({offre.company})"
             })
 
-        result.sort(key=lambda x: x["size"], reverse=True)
-
-        return Response({
-            "n_clusters": n_clusters,
-            "total_offers": len(offres),
-            "clusters": result,
-        }, status=status.HTTP_200_OK)
+        # Le frontend attend un tableau (Array) directement
+        return Response(result, status=status.HTTP_200_OK)

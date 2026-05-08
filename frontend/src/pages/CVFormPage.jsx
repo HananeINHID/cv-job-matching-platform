@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { 
-  Briefcase, ArrowLeft, Sun, Moon, AlertTriangle, X, Plus, Save 
+  Briefcase, ArrowLeft, Sun, Moon, AlertTriangle, X, Plus, Save, User 
 } from "lucide-react";
 import API from "../services/api";
 
@@ -29,6 +29,18 @@ function CVFormPage() {
   ]);
   const [erreur, setErreur] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const getNomDepuisToken = () => {
+    const savedNom = localStorage.getItem("userNom");
+    if (savedNom) return savedNom;
+
+    const token = localStorage.getItem("token");
+    if (!token) return "Utilisateur";
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      return payload.username || "Utilisateur";
+    } catch { return "Utilisateur"; }
+  };
 
   useEffect(() => {
     localStorage.setItem("darkMode", darkMode);
@@ -142,6 +154,16 @@ function CVFormPage() {
           <Briefcase size={20} style={{ color: "#0E8C8C" }} /> CV Matching
         </span>
         <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+          <span style={{
+            fontSize: "13px", fontWeight: "600",
+            color: c.sectionTitreColor,
+            backgroundColor: c.tagTealBg,
+            padding: "6px 14px", borderRadius: "20px",
+            border: `1px solid ${darkMode ? "rgba(14,140,140,0.3)" : "rgba(14,140,140,0.2)"}`,
+            display: "flex", alignItems: "center", gap: "6px"
+          }}>
+            <User size={14} /> {getNomDepuisToken()}
+          </span>
           <button onClick={() => navigate("/dashboard")} style={{
             padding: "8px 16px", background: "transparent",
             color: c.texteSecondaire, border: `1px solid ${c.cardBorder}`,

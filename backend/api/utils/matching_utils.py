@@ -7,10 +7,32 @@ Intègre : TF-IDF cosinus, Jaccard, expMatch, geoMatch, formule pondérée.
 
 import json
 import re
+import pickle
+import os
 
 # TF-IDF + cosinus (scikit-learn)
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+
+# Chemins vers les modèles ML pré-entraînés
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ML_MODELS_PATH = os.path.join(BASE_DIR, 'ml_models')
+
+_VECTORIZER = None
+_KMEANS = None
+
+def _load_models():
+    global _VECTORIZER, _KMEANS
+    if _VECTORIZER is None:
+        try:
+            with open(os.path.join(ML_MODELS_PATH, 'vectorizer_tfidf.pkl'), 'rb') as f:
+                _VECTORIZER = pickle.load(f)
+            with open(os.path.join(ML_MODELS_PATH, 'kmeans_model.pkl'), 'rb') as f:
+                _KMEANS = pickle.load(f)
+        except Exception:
+            pass
+
+_load_models()
 
 # spaCy 
 try:
@@ -85,7 +107,7 @@ def parse_skills(raw: str) -> list[str]:
 def tfidf_cosine_score(text_cv: str, text_offer: str) -> float:
     """
     Similarité cosinus TF-IDF entre deux textes (0.0 → 1.0).
-    Les textes sont lemmatisés avant vectorisation.
+    Utilise le vectoriseur pré-entraîné si disponible.
     """
     t1 = lemmatize_and_clean(text_cv)
     t2 = lemmatize_and_clean(text_offer)
@@ -94,12 +116,29 @@ def tfidf_cosine_score(text_cv: str, text_offer: str) -> float:
         return 0.0
 
     try:
-        vectorizer = TfidfVectorizer()
-        matrix = vectorizer.fit_transform([t1, t2])
+        if _VECTORIZER:
+            # Mode Production : Utilise le modèle entraîné par le Data Scientist
+            matrix = _VECTORIZER.transform([t1, t2])
+        else:
+            # Mode Fallback : Crée un vectoriseur à la volée
+            v = TfidfVectorizer()
+            matrix = v.fit_transform([t1, t2])
+            
         score = cosine_similarity(matrix[0:1], matrix[1:2])[0][0]
         return float(score)
     except Exception:
         return 0.0
+
+def predict_cluster(text: str) -> int:
+    """Prédit le cluster d'une offre d'emploi (utilise le modèle K-Means)."""
+    if not _VECTORIZER or not _KMEANS:
+        return 0
+    try:
+        clean = lemmatize_and_clean(text)
+        vector = _VECTORIZER.transform([clean])
+        return int(_KMEANS.predict(vector)[0])
+    except:
+        return 0
 
 
 def jaccard_score(skills_cv: set, skills_offer: set) -> float:
