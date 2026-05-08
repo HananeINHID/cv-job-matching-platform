@@ -110,8 +110,10 @@ function DashboardPage() {
   const hardSkills = data.hard_skills_list || data.hard_skills || [];
   const softSkills = data.soft_skills_list || data.soft_skills || [];
 
+  const [location,   setLocation]  = useState("Morocco");
+
   const lancerRecherche = () =>
-    navigate("/results", { state: { recherche, source } });
+    navigate("/results", { state: { recherche, source, locationParam: location } });
 
   if (loading) return (
     <div style={{ minHeight:"100vh", width:"100%", backgroundColor: c.pageBg,
@@ -255,6 +257,40 @@ function DashboardPage() {
               </button>
             ))}
           </div>
+
+          {/* Champ localisation — visible uniquement pour LinkedIn */}
+          {source === "linkedin" && (
+            <div style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ fontSize:"13px", fontWeight:"600", color: c.texteLabel, whiteSpace:"nowrap" }}>
+                📍 Localisation :
+              </span>
+              <input
+                style={{
+                  flex: 1, padding: "10px 14px", borderRadius: "10px",
+                  border: `1.5px solid ${c.inputBorder}`, backgroundColor: c.inputBg,
+                  color: c.inputTexte, fontSize: "13px", outline: "none",
+                }}
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                onFocus={(e) => e.target.style.borderColor = "#0E8C8C"}
+                onBlur={(e)  => e.target.style.borderColor = c.inputBorder}
+                placeholder="Ex: Morocco, Casablanca, France…"
+              />
+            </div>
+          )}
+
+          {/* Bannière info pour sources temps-réel */}
+          {source !== "dataset" && (
+            <div style={{
+              marginTop: "12px", padding: "10px 14px", borderRadius: "10px",
+              backgroundColor: darkMode ? "rgba(255,160,0,0.1)" : "#FFFBF0",
+              border: `1px solid ${darkMode ? "rgba(255,160,0,0.3)" : "#FFE082"}`,
+              fontSize: "12px", color: darkMode ? "#FFD070" : "#996600",
+              display: "flex", alignItems: "center", gap: "8px",
+            }}>
+              ⚡ Source temps-réel — le navigateur s'ouvrira en arrière-plan (~30–60 s).
+            </div>
+          )}
         </div>
 
         {/* Stats */}

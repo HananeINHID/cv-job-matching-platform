@@ -90,8 +90,9 @@ function normaliserClusters(raw) {
 function ResultsPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const recherche = location.state?.recherche || "";
-  const source = location.state?.source || "dataset";
+  const recherche  = location.state?.recherche || "";
+  const source     = location.state?.source    || "dataset";
+  const locationParam = location.state?.locationParam || "Morocco";
 
   const getNomDepuisToken = () => {
     const token = localStorage.getItem("token");
@@ -127,7 +128,17 @@ function ResultsPage() {
   useEffect(() => {
     const charger = async () => {
       try {
-        const response = await API.get(`/matching/results/?q=${encodeURIComponent(recherche)}&source=${source}`);
+        // Pour les sources temps-réel, déclencher d'abord le scraping
+        if (source !== "dataset") {
+          const params = new URLSearchParams({ q: recherche, source });
+          if (source === "linkedin") params.set("location", locationParam);
+          await API.get(`/jobs/search/?${params.toString()}`);
+        }
+
+        // Charger les résultats depuis la DB (scorés par matching)
+        const response = await API.get(
+          `/matching/results/?q=${encodeURIComponent(recherche)}&source=${source}`
+        );
         const list = Array.isArray(response.data) ? response.data : [];
         setOffres(list);
         if (list.length > 0) setOffre(list[0]);
@@ -255,12 +266,21 @@ function ResultsPage() {
     },
   });
 
+  const scrapingMsg = source !== "dataset"
+    ? `⏳ Scraping ${source === "linkedin" ? "LinkedIn" : source} en cours… (30–60 s)`
+    : "⏳ Analyse en cours…";
+
   if (loading) return (
     <div style={{
       minHeight: "100vh", width: "100%", backgroundColor: c.pageBg,
-      display: "flex", alignItems: "center", justifyContent: "center"
+      display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "12px"
     }}>
-      <p style={{ color: c.texteSecondaire, fontSize: "16px" }}>⏳ Analyse en cours...</p>
+      <p style={{ color: c.texteSecondaire, fontSize: "16px" }}>{scrapingMsg}</p>
+      {source !== "dataset" && (
+        <p style={{ color: c.texteSecondaire, fontSize: "12px", opacity: 0.7 }}>
+          Le navigateur s'ouvre en arrière-plan pour collecter les offres.
+        </p>
+      )}
     </div>
   );
 
