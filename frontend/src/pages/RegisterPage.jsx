@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { UserPlus, AlertTriangle, CheckCircle, ArrowRight } from "lucide-react";
 import API from "../services/api";
 
 function RegisterPage() {
@@ -9,34 +10,8 @@ function RegisterPage() {
   const [confirm, setConfirm]   = useState("");
   const [erreur, setErreur]     = useState("");
   const [succes, setSucces]     = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
+  const [loading, setLoading]   = useState(false);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    setDarkMode(window.matchMedia("(prefers-color-scheme: dark)").matches);
-  }, []);
-
-  const c = {
-    pageBg:      darkMode ? "#0D1B2A" : "#F0F4F8",
-    cardBg:      darkMode ? "#1A2B3C" : "#FFFFFF",
-    cardBorder:  darkMode ? "#1E3A5F" : "#E2EAF4",
-    cardShadow:  darkMode ? "0 20px 60px rgba(0,0,0,0.5)" : "0 20px 60px rgba(14,90,130,0.1)",
-    textePrimaire:   darkMode ? "#E8F1F8" : "#1A2B3C",
-    texteSecondaire: darkMode ? "#7A9BB5" : "#5A7184",
-    texteLabel:      darkMode ? "#A8C4D8" : "#3D5A73",
-    inputBg:     darkMode ? "#0F2030" : "#F7FAFD",
-    inputBorder: darkMode ? "#1E3A5F" : "#C8DCF0",
-    inputTexte:  darkMode ? "#E8F1F8" : "#1A2B3C",
-    toggleBg:    darkMode ? "#1E3A5F" : "#E2EAF4",
-    accent:      "#FF6B47",
-    boutonBg:    "linear-gradient(135deg, #0E8C8C, #0A6B7C)",
-    successBg:   darkMode ? "rgba(14,140,100,0.15)" : "#F0FFF8",
-    successBorder: "rgba(14,140,100,0.3)",
-    successTexte: darkMode ? "#50E0A0" : "#0A6B4A",
-    erreurBg:    darkMode ? "rgba(220,80,60,0.15)" : "#FFF0EE",
-    erreurBorder:"rgba(220,80,60,0.3)",
-    erreurTexte: darkMode ? "#FF9080" : "#C0392B",
-  };
 
   const handleRegister = async () => {
     setErreur("");
@@ -49,14 +24,13 @@ function RegisterPage() {
     if (password.length < 8) {
       setErreur("Minimum 8 caractères."); return;
     }
+    setLoading(true);
     try {
       await API.post("/auth/register/", {
         username: nom, email, password, password_confirm: confirm
       });
       setSucces(true);
-      // Redirection vers login après 2 secondes
       setTimeout(() => navigate("/login"), 2000);
-
     } catch (error) {
       const data = error.response?.data;
       if (data) {
@@ -66,87 +40,100 @@ function RegisterPage() {
       } else {
         setErreur("Erreur réseau. Vérifiez votre connexion.");
       }
+    } finally {
+      setLoading(false);
     }
   };
 
-  const inputStyle = {
-    width: "100%",
-    padding: "12px 16px",
-    borderRadius: "12px",
-    border: `1.5px solid ${c.inputBorder}`,
-    backgroundColor: c.inputBg,
-    color: c.inputTexte,
-    fontSize: "14px",
-    boxSizing: "border-box",
-    outline: "none",
-  };
-
-  const labelStyle = {
-    display: "block",
-    fontSize: "13px",
-    fontWeight: "600",
-    color: c.texteLabel,
-    marginBottom: "8px",
+  const inputBase = {
+    width: "100%", padding: "11px 14px",
+    borderRadius: "10px",
+    border: "1.5px solid var(--border-color)",
+    backgroundColor: "var(--bg-main)",
+    color: "var(--text-main)",
+    fontSize: "14px", boxSizing: "border-box", outline: "none",
+    fontFamily: "inherit", transition: "border-color 0.2s",
   };
 
   return (
     <div style={{
-      minHeight: "100vh", width: "100vw",
-      position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+      minHeight: "100vh",
       display: "flex", alignItems: "center", justifyContent: "center",
-      backgroundColor: c.pageBg, overflowY: "auto", padding: "1rem",
+      backgroundColor: "var(--bg-main)",
+      padding: "1rem",
+      fontFamily: "'Inter', sans-serif",
     }}>
+      {/* Fond décoratif */}
+      <div style={{ position: "fixed", inset: 0, zIndex: 0, overflow: "hidden", pointerEvents: "none" }}>
+        <div style={{
+          position: "absolute", top: "-15%", left: "-5%",
+          width: "500px", height: "500px", borderRadius: "50%",
+          background: "radial-gradient(circle, rgba(79,70,229,0.08) 0%, transparent 70%)",
+        }} />
+        <div style={{
+          position: "absolute", bottom: "-10%", right: "-5%",
+          width: "400px", height: "400px", borderRadius: "50%",
+          background: "radial-gradient(circle, rgba(37,99,235,0.06) 0%, transparent 70%)",
+        }} />
+      </div>
 
-      <button onClick={() => setDarkMode(!darkMode)} style={{
-        position: "fixed", top: "20px", right: "20px",
-        width: "42px", height: "42px", borderRadius: "50%",
-        border: `1px solid ${c.cardBorder}`, backgroundColor: c.toggleBg,
-        fontSize: "18px", cursor: "pointer", zIndex: 100,
-      }}>
-        {darkMode ? "☀️" : "🌙"}
-      </button>
-
+      {/* Carte */}
       <div style={{
-        backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`,
-        borderRadius: "20px", padding: "2.5rem", width: "100%", maxWidth: "420px",
-        boxShadow: c.cardShadow, margin: "1rem",
+        position: "relative", zIndex: 1,
+        backgroundColor: "var(--bg-surface)",
+        border: "1px solid var(--border-color)",
+        borderRadius: "20px", padding: "2.5rem",
+        width: "100%", maxWidth: "420px",
+        boxShadow: "var(--shadow-lg)",
       }}>
 
         {/* En-tête */}
         <div style={{ textAlign: "center", marginBottom: "2rem" }}>
           <div style={{
             width: "56px", height: "56px", borderRadius: "14px",
-            background: c.boutonBg, margin: "0 auto 1rem",
+            background: "linear-gradient(135deg, #2563EB, #4F46E5)",
+            margin: "0 auto 1rem",
             display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: "26px", boxShadow: "0 8px 20px rgba(14,140,140,0.3)",
-          }}>✨</div>
-          <h1 style={{ fontSize: "24px", fontWeight: "700", color: c.textePrimaire, margin: "0 0 6px 0" }}>
+            boxShadow: "0 8px 20px rgba(37,99,235,0.3)",
+          }}>
+            <UserPlus size={26} color="white" />
+          </div>
+          <h1 style={{
+            fontSize: "22px", fontWeight: 800,
+            color: "var(--text-main)", margin: "0 0 6px", letterSpacing: "-0.3px",
+          }}>
             Créer un compte
           </h1>
-          <p style={{ fontSize: "14px", color: c.texteSecondaire, margin: 0 }}>
-            Rejoignez CV Matching
+          <p style={{ fontSize: "14px", color: "var(--text-muted)", margin: 0 }}>
+            Rejoignez CV Matching Platform
           </p>
         </div>
 
         {/* Succès */}
         {succes && (
           <div style={{
-            backgroundColor: c.successBg, border: `1px solid ${c.successBorder}`,
-            color: c.successTexte, padding: "12px 16px", borderRadius: "12px",
-            fontSize: "13px", marginBottom: "20px", textAlign: "center",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+            backgroundColor: "rgba(16,185,129,0.1)",
+            border: "1px solid rgba(16,185,129,0.3)",
+            color: "var(--color-success)",
+            padding: "12px 16px", borderRadius: "10px",
+            fontSize: "13px", marginBottom: "20px",
           }}>
-            ✅ Compte créé ! Redirection vers le login...
+            <CheckCircle size={15} /> Compte créé ! Redirection vers le login…
           </div>
         )}
 
         {/* Erreur */}
         {erreur && (
           <div style={{
-            backgroundColor: c.erreurBg, border: `1px solid ${c.erreurBorder}`,
-            color: c.erreurTexte, padding: "12px 16px", borderRadius: "12px",
+            display: "flex", alignItems: "center", gap: "8px",
+            backgroundColor: "rgba(239,68,68,0.08)",
+            border: "1px solid rgba(239,68,68,0.3)",
+            color: "var(--color-danger)",
+            padding: "10px 14px", borderRadius: "10px",
             fontSize: "13px", marginBottom: "20px",
           }}>
-            ⚠️ {erreur}
+            <AlertTriangle size={15} /> {erreur}
           </div>
         )}
 
@@ -158,38 +145,65 @@ function RegisterPage() {
           { label: "Confirmer le mot de passe", val: confirm, set: setConfirm, type: "password", ph: "••••••••" },
         ].map(({ label, val, set, type, ph }) => (
           <div key={label} style={{ marginBottom: "16px" }}>
-            <label style={labelStyle}>{label}</label>
+            <label style={{
+              display: "block", fontSize: "13px", fontWeight: 600,
+              color: "var(--text-muted)", marginBottom: "8px",
+            }}>{label}</label>
             <input
               type={type} placeholder={ph} value={val}
-              onChange={(e) => set(e.target.value)}
-              style={inputStyle}
-              onFocus={(e) => e.target.style.borderColor = "#0E8C8C"}
-              onBlur={(e) => e.target.style.borderColor = c.inputBorder}
+              onChange={e => set(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleRegister()}
+              style={inputBase}
+              onFocus={e => e.target.style.borderColor = "#2563EB"}
+              onBlur={e => e.target.style.borderColor = "var(--border-color)"}
             />
           </div>
         ))}
 
         {/* Bouton */}
-        <button onClick={handleRegister} style={{
-          width: "100%", padding: "14px",
-          background: c.boutonBg, color: "white", border: "none",
-          borderRadius: "12px", fontSize: "15px", fontWeight: "600",
-          cursor: "pointer", marginTop: "8px",
-          boxShadow: "0 8px 20px rgba(14,140,140,0.35)",
-        }}>
-          Créer mon compte
+        <button
+          onClick={handleRegister}
+          disabled={loading || succes}
+          style={{
+            width: "100%", padding: "13px",
+            background: (loading || succes) ? "var(--text-muted)" : "linear-gradient(135deg, #2563EB, #4F46E5)",
+            color: "white", border: "none", borderRadius: "10px",
+            fontSize: "15px", fontWeight: 700,
+            cursor: (loading || succes) ? "not-allowed" : "pointer",
+            marginTop: "8px",
+            boxShadow: (loading || succes) ? "none" : "0 4px 14px rgba(37,99,235,0.35)",
+            transition: "all 0.2s ease",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+            fontFamily: "inherit",
+          }}
+          onMouseEnter={e => { if (!loading && !succes) e.currentTarget.style.transform = "translateY(-1px)"; }}
+          onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; }}
+        >
+          {loading ? (
+            <>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ animation: "spin 1s linear infinite" }}>
+                <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+                <path d="M12 2a10 10 0 0 1 10 10" stroke="white" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+              Création en cours…
+            </>
+          ) : (
+            <>Créer mon compte <ArrowRight size={16} /></>
+          )}
         </button>
+
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
         {/* Séparateur */}
         <div style={{ display: "flex", alignItems: "center", gap: "12px", margin: "20px 0" }}>
-          <div style={{ flex: 1, height: "1px", backgroundColor: c.cardBorder }}/>
-          <span style={{ fontSize: "12px", color: c.texteSecondaire }}>ou</span>
-          <div style={{ flex: 1, height: "1px", backgroundColor: c.cardBorder }}/>
+          <div style={{ flex: 1, height: "1px", backgroundColor: "var(--border-color)" }} />
+          <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>ou</span>
+          <div style={{ flex: 1, height: "1px", backgroundColor: "var(--border-color)" }} />
         </div>
 
-        <p style={{ textAlign: "center", fontSize: "13px", color: c.texteSecondaire, margin: 0 }}>
+        <p style={{ textAlign: "center", fontSize: "13px", color: "var(--text-muted)", margin: 0 }}>
           Déjà un compte ?{" "}
-          <Link to="/login" style={{ color: c.accent, textDecoration: "none", fontWeight: "600" }}>
+          <Link to="/login" style={{ color: "#2563EB", textDecoration: "none", fontWeight: 700 }}>
             Se connecter
           </Link>
         </p>
