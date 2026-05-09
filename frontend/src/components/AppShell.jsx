@@ -43,7 +43,7 @@ const AppShell = ({ children, title, breadcrumb }) => {
         {/* Page content */}
         <main style={{
           flex: 1,
-          marginTop: '64px',
+          marginTop: '72px',
           padding: '2rem',
           backgroundColor: 'var(--bg-main)',
           boxSizing: 'border-box',

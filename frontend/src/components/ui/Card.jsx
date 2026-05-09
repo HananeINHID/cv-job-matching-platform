@@ -8,7 +8,7 @@ export const Card = ({ children, style = {}, className = '', onClick, hoverable 
 
   return (
     <div
-      className={className}
+      className={`${className} ${hoverable ? 'hover-card' : ''} glass-card`}
       onClick={onClick}
       onMouseEnter={() => hoverable && setHovered(true)}
       onMouseLeave={() => hoverable && setHovered(false)}
@@ -17,12 +17,20 @@ export const Card = ({ children, style = {}, className = '', onClick, hoverable 
         border: `1px solid var(--border-color)`,
         borderRadius: 'var(--radius-lg)',
         boxShadow: hovered ? 'var(--shadow-lg)' : 'var(--shadow-sm)',
-        transition: 'box-shadow 0.2s ease, transform 0.2s ease',
-        transform: hovered ? 'translateY(-2px)' : 'translateY(0)',
+        transition: 'var(--transition-smooth)',
+        transform: hovered ? 'translateY(-3px)' : 'translateY(0)',
         cursor: onClick ? 'pointer' : 'default',
+        position: 'relative',
+        overflow: 'hidden',
         ...style,
       }}
     >
+      <style>{`
+        .glass-card {
+           backdrop-filter: blur(10px);
+           -webkit-backdrop-filter: blur(10px);
+        }
+      `}</style>
       {children}
     </div>
   );
@@ -39,20 +47,23 @@ export const CardHeader = ({ title, subtitle, action, icon }) => (
     padding: '1.25rem 1.5rem',
     borderBottom: '1px solid var(--border-color)',
   }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
       {icon && (
         <span style={{
-          display: 'flex', alignItems: 'center',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
           color: 'var(--color-primary)',
+          backgroundColor: 'var(--color-primary-light)',
+          padding: '8px',
+          borderRadius: 'var(--radius-md)',
         }}>{icon}</span>
       )}
       <div>
         <h3 style={{
-          margin: 0, fontSize: '15px', fontWeight: 700,
-          color: 'var(--text-main)',
+          margin: 0, fontSize: '16px', fontWeight: 700,
+          color: 'var(--text-main)', letterSpacing: '-0.3px',
         }}>{title}</h3>
         {subtitle && (
-          <p style={{ margin: '2px 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
+          <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
             {subtitle}
           </p>
         )}

@@ -17,6 +17,8 @@ export const Button = ({
   className = '',
   style = {},
 }) => {
+  const [hovered, setHovered] = React.useState(false);
+
   const baseStyle = {
     display: 'inline-flex',
     alignItems: 'center',
@@ -27,9 +29,12 @@ export const Button = ({
     borderRadius: 'var(--radius-md)',
     border: 'none',
     cursor: disabled ? 'not-allowed' : 'pointer',
-    transition: 'all 0.2s ease',
+    transition: 'var(--transition-smooth)',
     opacity: disabled ? 0.6 : 1,
     width: fullWidth ? '100%' : 'auto',
+    position: 'relative',
+    overflow: 'hidden',
+    transform: hovered && !disabled ? 'translateY(-1px)' : 'translateY(0)',
     ...style,
   };
 
@@ -41,30 +46,30 @@ export const Button = ({
 
   const variantStyles = {
     primary: {
-      background: 'linear-gradient(135deg, var(--color-primary) 0%, #1D4ED8 100%)',
+      background: 'var(--gradient-primary)',
       color: '#ffffff',
-      boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)',
+      boxShadow: hovered && !disabled ? 'var(--shadow-glow)' : '0 4px 14px rgba(99, 102, 241, 0.25)',
     },
     secondary: {
-      background: 'var(--bg-surface)',
+      background: hovered && !disabled ? 'var(--bg-main)' : 'var(--bg-surface)',
       color: 'var(--text-main)',
-      border: '1.5px solid var(--border-color)',
-      boxShadow: 'var(--shadow-sm)',
+      border: '1px solid var(--border-color)',
+      boxShadow: hovered && !disabled ? 'var(--shadow-md)' : 'var(--shadow-sm)',
     },
     danger: {
-      background: 'rgba(239, 68, 68, 0.1)',
+      background: hovered && !disabled ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)',
       color: 'var(--color-danger)',
-      border: '1.5px solid rgba(239, 68, 68, 0.3)',
+      border: '1px solid rgba(239, 68, 68, 0.3)',
     },
     ghost: {
-      background: 'transparent',
-      color: 'var(--text-muted)',
-      border: '1.5px solid var(--border-color)',
+      background: hovered && !disabled ? 'var(--bg-surface)' : 'transparent',
+      color: hovered && !disabled ? 'var(--text-main)' : 'var(--text-muted)',
+      border: '1px solid transparent',
     },
     success: {
       background: 'linear-gradient(135deg, var(--color-success) 0%, #059669 100%)',
       color: '#ffffff',
-      boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
+      boxShadow: hovered && !disabled ? '0 8px 20px rgba(16, 185, 129, 0.25)' : '0 4px 14px rgba(16, 185, 129, 0.25)',
     },
   };
 
@@ -74,6 +79,8 @@ export const Button = ({
       onClick={onClick}
       disabled={disabled}
       className={className}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{ ...baseStyle, ...sizeStyles[size], ...variantStyles[variant] }}
     >
       {icon && <span style={{ display: 'flex', alignItems: 'center' }}>{icon}</span>}

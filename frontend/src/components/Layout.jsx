@@ -38,7 +38,7 @@ export const Sidebar = ({ mobileOpen, onMobileClose }) => {
     flexDirection: 'column',
     zIndex: 100,
     boxShadow: 'var(--shadow-md)',
-    transition: 'transform 0.3s ease',
+    transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s ease',
   };
 
   return (
@@ -81,14 +81,16 @@ export const Sidebar = ({ mobileOpen, onMobileClose }) => {
             <div style={{
               width: '36px', height: '36px',
               borderRadius: 'var(--radius-md)',
-              background: 'linear-gradient(135deg, var(--color-primary) 0%, #4F46E5 100%)',
+              background: 'var(--gradient-primary)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: 'var(--shadow-glow)',
             }}>
               <Briefcase size={18} color="white" />
             </div>
             <span style={{
-              fontSize: '16px', fontWeight: 700,
+              fontSize: '18px', fontWeight: 800,
               color: 'var(--text-main)',
+              letterSpacing: '-0.5px'
             }}>CV Matching</span>
           </div>
           <button
@@ -121,18 +123,30 @@ export const Sidebar = ({ mobileOpen, onMobileClose }) => {
               style={({ isActive }) => ({
                 display: 'flex',
                 alignItems: 'center',
-                gap: '10px',
-                padding: '10px 12px',
+                gap: '12px',
+                padding: '12px 14px',
                 borderRadius: 'var(--radius-md)',
-                marginBottom: '4px',
+                marginBottom: '6px',
                 textDecoration: 'none',
                 fontWeight: isActive ? 600 : 500,
                 fontSize: '14px',
                 color: isActive ? 'var(--color-primary)' : 'var(--text-muted)',
                 backgroundColor: isActive ? 'var(--color-primary-light)' : 'transparent',
-                transition: 'all 0.15s ease',
+                transition: 'var(--transition-smooth)',
                 position: 'relative',
               })}
+              onMouseEnter={(e) => {
+                if(!e.currentTarget.style.backgroundColor.includes('var(--color-primary-light)')) {
+                  e.currentTarget.style.backgroundColor = 'rgba(100, 116, 139, 0.05)';
+                  e.currentTarget.style.color = 'var(--text-main)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if(!e.currentTarget.style.backgroundColor.includes('var(--color-primary-light)')) {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = 'var(--text-muted)';
+                }
+              }}
             >
               {({ isActive }) => (
                 <>
@@ -140,9 +154,10 @@ export const Sidebar = ({ mobileOpen, onMobileClose }) => {
                     <span style={{
                       position: 'absolute',
                       left: 0, top: '50%', transform: 'translateY(-50%)',
-                      width: '3px', height: '60%',
+                      width: '4px', height: '60%',
                       borderRadius: '0 4px 4px 0',
                       backgroundColor: 'var(--color-primary)',
+                      boxShadow: 'var(--shadow-glow)',
                     }} />
                   )}
                   <Icon size={18} />
@@ -205,13 +220,14 @@ export const Topbar = ({ onMenuClick, title, breadcrumb }) => {
   const initiales = getNom().substring(0, 2).toUpperCase();
 
   return (
-    <header style={{
+    <header 
+      className="glass"
+      style={{
       position: 'fixed',
       top: 0,
       left: 0,
       right: 0,
-      height: '64px',
-      backgroundColor: 'var(--bg-surface)',
+      height: '72px',
       borderBottom: '1px solid var(--border-color)',
       display: 'flex',
       alignItems: 'center',
@@ -219,6 +235,7 @@ export const Topbar = ({ onMenuClick, title, breadcrumb }) => {
       zIndex: 90,
       boxShadow: 'var(--shadow-sm)',
       gap: '16px',
+      transition: 'padding 0.3s ease',
     }}>
       {/* Hamburger mobile */}
       <button
@@ -249,59 +266,52 @@ export const Topbar = ({ onMenuClick, title, breadcrumb }) => {
           </p>
         )}
         {title && (
-          <h1 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: 'var(--text-main)' }}>
+          <h1 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-main)', margin: 0, letterSpacing: '-0.5px' }}>
             {title}
           </h1>
         )}
       </div>
 
       {/* Actions */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        {/* Dark mode toggle */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        {/* Toggle Dark Mode */}
         <button
           onClick={toggleTheme}
-          title={isDarkMode ? 'Mode clair' : 'Mode sombre'}
+          title={isDarkMode ? "Passer en mode clair" : "Passer en mode sombre"}
           style={{
-            width: '38px', height: '38px',
-            borderRadius: 'var(--radius-full)',
-            border: '1.5px solid var(--border-color)',
-            backgroundColor: 'var(--bg-surface)',
+            background: 'var(--color-primary-light)', border: 'none',
+            cursor: 'pointer', padding: '10px',
+            color: 'var(--color-primary)', borderRadius: 'var(--radius-full)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer',
-            color: 'var(--text-muted)',
-            transition: 'all 0.2s ease',
+            transition: 'var(--transition-smooth)',
           }}
+          onMouseEnter={(e) => e.currentTarget.style.transform = 'rotate(15deg)'}
+          onMouseLeave={(e) => e.currentTarget.style.transform = 'rotate(0deg)'}
         >
-          {isDarkMode ? <Sun size={17} color="#F59E0B" /> : <Moon size={17} />}
+          {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
         </button>
 
-        {/* Avatar */}
-        <div
-          onClick={() => navigate('/cv-form')}
-          title="Mon profil"
-          style={{
-            display: 'flex', alignItems: 'center', gap: '8px',
-            padding: '6px 12px',
-            borderRadius: 'var(--radius-full)',
-            border: '1.5px solid var(--border-color)',
-            cursor: 'pointer',
-            backgroundColor: 'var(--bg-surface)',
-            transition: 'border-color 0.2s',
-          }}
-        >
+        {/* Avatar Utilisateur */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '12px',
+          paddingLeft: '16px', borderLeft: '1px solid var(--border-color)',
+        }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', display: 'none' }}>
+            <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-main)' }}>{getNom()}</span>
+            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Utilisateur</span>
+          </div>
           <div style={{
-            width: '28px', height: '28px',
-            borderRadius: '50%',
-            background: 'linear-gradient(135deg, var(--color-primary) 0%, #4F46E5 100%)',
+            width: '40px', height: '40px',
+            borderRadius: 'var(--radius-full)',
+            background: 'var(--gradient-primary)',
+            color: 'white',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '11px', fontWeight: 700, color: 'white',
-            flexShrink: 0,
+            fontWeight: 700, fontSize: '14px',
+            boxShadow: 'var(--shadow-sm)',
+            border: '2px solid var(--bg-surface)'
           }}>
             {initiales}
           </div>
-          <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-main)' }}>
-            {getNom()}
-          </span>
         </div>
       </div>
     </header>
