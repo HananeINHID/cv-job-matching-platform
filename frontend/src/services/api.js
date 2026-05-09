@@ -72,4 +72,8 @@ export const getClusters = () => API.get("/matching/clusters/");
 export const searchJobs = (q, source = "dataset") =>
   API.get("/jobs/search/", { params: { q, source } });
 
+/** Déclenche le scraper explicitement */
+export const triggerScraper = (q, source) => 
+  API.get("/jobs/search/", { params: { q, source } });
+
 export default API;

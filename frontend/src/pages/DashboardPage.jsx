@@ -5,7 +5,7 @@ import {
   GraduationCap, Edit2, Database, Globe, RefreshCw,
   TrendingUp, Star, Clock, CheckCircle2
 } from "lucide-react";
-import API, { getHistory } from "../services/api";
+import API, { getHistory, triggerScraper } from "../services/api";
 import AppShell from "../components/AppShell";
 import { Card, CardHeader, CardBody } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
@@ -59,6 +59,8 @@ function DashboardPage() {
   const [recherche, setRecherche] = useState("");
   const [source, setSource] = useState("dataset");
   const [location, setLocation] = useState("Morocco");
+  const [scraping, setScraping] = useState(false);
+  const [progress, setProgress] = useState(0);
 
   // Chargement profil + historique
   useEffect(() => {
@@ -96,12 +98,40 @@ function DashboardPage() {
     charger();
   }, []);
 
+  // Progression du scraping
+  useEffect(() => {
+    let interval;
+    if (scraping) {
+      setProgress(0);
+      // La barre monte jusqu'à ~95% en 30 secondes environ (3% par seconde)
+      interval = setInterval(() => {
+        setProgress(p => (p >= 95 ? 95 : p + 3));
+      }, 1000);
+    } else {
+      setProgress(100);
+      clearInterval(interval);
+    }
+    return () => clearInterval(interval);
+  }, [scraping]);
+
   // Lancer une recherche
-  const lancerRecherche = () => {
-    if (!recherche.trim()) {
+  const lancerRecherche = async () => {
+    if (!recherche.trim() && source === "dataset") {
       toast.error("Veuillez saisir un mot-clé.");
       return;
     }
+    
+    if (source !== "dataset") {
+      setScraping(true);
+      try {
+        await triggerScraper(recherche, source);
+      } catch (err) {
+        console.error("Erreur lancement scraper", err);
+        toast.error("Erreur lors de l'extraction des offres.");
+      }
+      setScraping(false);
+    }
+    
     navigate("/results", { state: { recherche, source, locationParam: location } });
   };
 
@@ -154,6 +184,40 @@ function DashboardPage() {
       small: true,
     },
   ];
+
+  if (scraping) {
+    return (
+      <div style={{
+        minHeight: "100vh", width: "100%", backgroundColor: "var(--bg-main)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        flexDirection: "column"
+      }}>
+        <div className="glass" style={{
+          textAlign: "center", maxWidth: "450px", width: "100%", padding: "40px",
+          borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)"
+        }}>
+          <div style={{ fontSize: "48px", marginBottom: "20px" }}>🤖</div>
+          <h3 style={{ color: "var(--text-main)", marginBottom: "12px", fontSize: "20px", fontWeight: 700 }}>
+            Recherche sur {SOURCES.find(s => s.value === source)?.label || source}...
+          </h3>
+          <p style={{ color: "var(--text-muted)", fontSize: "14px", marginBottom: "24px", lineHeight: 1.5 }}>
+            Extraction des offres en temps réel. Cela prend généralement entre 15 et 30 secondes selon le site.
+          </p>
+          
+          <div style={{
+            width: "100%", backgroundColor: "var(--color-primary-light)",
+            borderRadius: "var(--radius-full)", height: "8px", overflow: "hidden"
+          }}>
+            <div style={{
+              width: `${progress}%`, height: "100%", background: "var(--gradient-primary)",
+              transition: "width 0.5s ease", borderRadius: "var(--radius-full)",
+              boxShadow: "var(--shadow-glow)"
+            }} />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <AppShell title={`Bonjour ${getPrenom()} 👋`} breadcrumb="Accueil / Dashboard">
