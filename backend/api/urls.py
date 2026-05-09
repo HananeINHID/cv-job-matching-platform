@@ -7,6 +7,7 @@ from .views import (
     UserRegistrationView,
     EmailVerificationView,
     MatchingResultsView,
+    ScrapeLinkedInView,
     JobSearchView,
     WordCloudView,
     GeoDistributionView,
@@ -34,6 +35,7 @@ urlpatterns = [
     path('matching/results/', MatchingResultsView.as_view(), name='matching-results'),
     path('matching/clusters/', ClusterView.as_view(), name='matching-clusters'),
     path('jobs/search/', JobSearchView.as_view(), name='job-search'),
+    path('jobs/scrape/', ScrapeLinkedInView.as_view(), name='job-scrape'),
     path('jobs/<int:offer_id>/radar/', RadarChartView.as_view(), name='job-radar'),
 
     # Statistiques & visualisation

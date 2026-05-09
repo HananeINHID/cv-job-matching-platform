@@ -17,6 +17,7 @@ from .profile_views import (
 )
 from .matching_views import (
     MatchingResultsView,
+    ScrapeLinkedInView,
 )
 from .job_search_views import (
     JobSearchView,
@@ -36,6 +37,7 @@ __all__ = [
     "CVProfileView",
     "UserProfileRetrieveUpdateView",
     "MatchingResultsView",
+    "ScrapeLinkedInView",
     "JobSearchView",
     "WordCloudView",
     "GeoDistributionView",

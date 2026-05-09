@@ -63,8 +63,15 @@ def _get_cv_context(user):
             profile.titre or '', profile.hard_skills or '',
             profile.soft_skills or '', exp_texts,
         ]))
-        cv_skills = set(parse_skills(profile.hard_skills))
-        return cv_text, cv_skills, profile.experience_years or '', profile.ville or ''
+        
+        # Extraction des compétences : hard_skills + scan des expériences
+        skills = set(parse_skills(profile.hard_skills))
+        if not skills:
+            # Fallback : on scanne le texte du CV pour les mots-clés communs
+            tokens = tokenize_text(cv_text)
+            skills = {s for s in COMMON_SKILLS if s in tokens}
+            
+        return cv_text, skills, profile.experience_years or '', profile.ville or ''
     except UserProfile.DoesNotExist:
         return "", set(), "", ""
 
@@ -216,22 +223,45 @@ class RadarChartView(APIView):
             cv_ville=cv_ville, offer_ville=offre.location,
         )
 
-        # Création des axes pour le radar (max 6-7 compétences)
-        # On priorise les compétences de l'offre
-        all_axes = list(offer_skills)
-        if len(all_axes) < 6:
-            all_axes.extend(list(cv_skills - offer_skills))
-        labels = [s.title() for s in all_axes[:7]]
+        # Création des axes pour le radar (on veut au moins 5 axes pour le visuel)
+        axes_labels = list(offer_skills)
+        
+        # Si trop peu de compétences, on complète avec des axes génériques
+        fallbacks = ["Expérience", "Formation", "Soft Skills", "Localisation", "Outils"]
+        while len(axes_labels) < 5 and fallbacks:
+            f = fallbacks.pop(0)
+            if f not in axes_labels:
+                axes_labels.append(f)
+        
+        labels = [s.title() for s in axes_labels[:7]]
 
-        # Remplissage des données (100 si possède, 0 sinon)
-        cv_data = [100 if s.lower() in [c.lower() for c in cv_skills] else 0 for s in labels]
-        offre_data = [100 if s.lower() in [o.lower() for o in offer_skills] else 0 for s in labels]
-
-        # Si l'offre n'a pas de compétences précises, on met un score par défaut
-        if not labels:
-            labels = ["Technique", "Expérience", "Outils", "Domaine", "Soft Skills"]
-            cv_data = [70, 80, 60, 90, 85]
-            offre_data = [80, 70, 70, 80, 90]
+        # Remplissage des données
+        cv_data = []
+        offre_data = []
+        
+        for label in labels:
+            l_lower = label.lower()
+            # Cas des compétences techniques
+            if l_lower in [c.lower() for c in cv_skills] or l_lower in tokenize_text(cv_text):
+                cv_val = 100
+            else:
+                cv_val = 20 # Minimum pour le visuel
+                
+            if l_lower in [o.lower() for o in offer_skills]:
+                off_val = 100
+            else:
+                # Pour les axes génériques, on simule une valeur basée sur les scores réels
+                if label == "Expérience":
+                    cv_val = round(experience_match(cv_years, offre.required_experience) * 100)
+                    off_val = 100
+                elif label == "Localisation":
+                    cv_val = round(geo_match(cv_ville, offre.location) * 100)
+                    off_val = 100
+                else:
+                    off_val = 80 # Valeur par défaut pour l'offre
+            
+            cv_data.append(cv_val)
+            offre_data.append(off_val)
 
         return Response({
             "labels": labels,

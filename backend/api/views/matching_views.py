@@ -8,6 +8,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.core.management import call_command
 
 from ..models import UserProfile, JobOffer
 from ..utils.matching_utils import (
@@ -137,3 +138,21 @@ class MatchingResultsView(APIView):
         results.sort(key=lambda x: x['score'], reverse=True)
 
         return Response(results, status=status.HTTP_200_OK)
+
+
+class ScrapeLinkedInView(APIView):
+    """
+    Lance le scraper LinkedIn pour un mot-clé spécifique de manière synchrone,
+    pour que le frontend puisse afficher un loading jusqu'à la fin.
+    POST /api/jobs/scrape/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        keyword = request.data.get('keyword', '')
+        # On limite à 5 offres pour la recherche en temps réel et on force l'arrêt après un passage
+        try:
+            call_command('scrape_linkedin', keyword=keyword, limit=5, run_once=True)
+            return Response({"status": "success", "message": "Scraping terminé."}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"status": "error", "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
