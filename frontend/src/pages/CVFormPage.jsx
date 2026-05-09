@@ -1,17 +1,13 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { 
-  Briefcase, ArrowLeft, Sun, Moon, AlertTriangle, X, Plus, Save, User 
-} from "lucide-react";
+import { AlertTriangle, X, Plus, Save } from "lucide-react";
 import API from "../services/api";
+import AppShell from "../components/AppShell";
+import { Button } from "../components/ui/Button";
+import toast from "react-hot-toast";
 
 function CVFormPage() {
   const navigate = useNavigate();
-  const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem("darkMode");
-    if (saved !== null) return saved === "true";
-    return window.matchMedia("(prefers-color-scheme: dark)").matches;
-  });
   const [nom, setNom]             = useState("");
   const [email, setEmail]         = useState("");
   const [telephone, setTelephone] = useState("");
@@ -29,49 +25,89 @@ function CVFormPage() {
   ]);
   const [erreur, setErreur] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingProfil, setLoadingProfil] = useState(true);
 
-  const getNomDepuisToken = () => {
-    const savedNom = localStorage.getItem("userNom");
-    if (savedNom) return savedNom;
-
-    const token = localStorage.getItem("token");
-    if (!token) return "Utilisateur";
-    try {
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      return payload.username || "Utilisateur";
-    } catch { return "Utilisateur"; }
-  };
-
+  // ── Chargement du profil existant au montage ──────────────────────
   useEffect(() => {
-    localStorage.setItem("darkMode", darkMode);
-  }, [darkMode]);
+    const fetchProfil = async () => {
+      try {
+        const res = await API.get("/profile/cv/");
+        const data = res.data;
+
+        // Informations personnelles
+        const pi = data.personal_info || {};
+        if (pi.nom)       setNom(pi.nom);
+        if (pi.email)     setEmail(pi.email);
+        if (pi.telephone) setTelephone(pi.telephone);
+        if (pi.ville)     setVille(pi.ville);
+        if (pi.titre)     setTitre(pi.titre);
+
+        // Compétences — support JSON list ou CSV string
+        const parseSkills = (v) => {
+          if (!v) return [];
+          if (Array.isArray(v)) return v;
+          try { return JSON.parse(v); } catch { return v.split(',').map(s => s.trim()).filter(Boolean); }
+        };
+        const hs = data.hard_skills_list || data.hard_skills || [];
+        const ss = data.soft_skills_list || data.soft_skills || [];
+        if (hs.length) setHardSkills(parseSkills(hs));
+        if (ss.length) setSoftSkills(parseSkills(ss));
+
+        // Expériences
+        if (data.experiences && data.experiences.length > 0) {
+          setExperiences(data.experiences.map(e => ({
+            poste:       e.poste       || "",
+            entreprise:  e.entreprise  || "",
+            debut:       e.debut       || "",
+            fin:         e.fin         || "",
+            description: e.description || "",
+          })));
+        }
+
+        // Formations
+        if (data.formations && data.formations.length > 0) {
+          setFormations(data.formations.map(f => ({
+            diplome:       f.diplome       || "",
+            etablissement: f.etablissement || "",
+            annee:         f.annee         || "",
+            domaine:       f.domaine       || "",
+          })));
+        }
+      } catch (e) {
+        // Profil inexistant — on garde les champs vides, pas d'erreur affichée
+      } finally {
+        setLoadingProfil(false);
+      }
+    };
+    fetchProfil();
+  }, []);
 
   const c = {
-    pageBg:      darkMode ? "#0D1B2A" : "#F0F4F8",
-    cardBg:      darkMode ? "#1A2B3C" : "#FFFFFF",
-    cardBorder:  darkMode ? "#1E3A5F" : "#E2EAF4",
-    navBg:       darkMode ? "#0F2030" : "#FFFFFF",
-    textePrimaire:   darkMode ? "#E8F1F8" : "#1A2B3C",
-    texteSecondaire: darkMode ? "#7A9BB5" : "#5A7184",
-    texteLabel:      darkMode ? "#A8C4D8" : "#3D5A73",
-    sectionTitreColor: darkMode ? "#4DD9D9" : "#0E8C8C",
-    inputBg:     darkMode ? "#0F2030" : "#F7FAFD",
-    inputBorder: darkMode ? "#1E3A5F" : "#C8DCF0",
-    inputTexte:  darkMode ? "#E8F1F8" : "#1A2B3C",
-    toggleBg:    darkMode ? "#1E3A5F" : "#E2EAF4",
-    boutonBg:    "linear-gradient(135deg, #0E8C8C, #0A6B7C)",
-    accent:      "#FF6B47",
-    tagTealBg:   darkMode ? "rgba(14,140,140,0.2)" : "#E6F7F7",
-    tagTealText: darkMode ? "#4DD9D9" : "#0E8C8C",
-    tagOrangeBg: darkMode ? "rgba(255,107,71,0.2)" : "#FFF0EC",
-    tagOrangeText: darkMode ? "#FF9B7A" : "#CC4A25",
-    erreurBg:    darkMode ? "rgba(220,80,60,0.15)" : "#FFF0EE",
-    erreurBorder:"rgba(220,80,60,0.3)",
-    erreurTexte: darkMode ? "#FF9080" : "#C0392B",
-    itemBg:      darkMode ? "#0F2030" : "#F7FAFD",
-    itemBorder:  darkMode ? "#1E3A5F" : "#E2EAF4",
-    suppressBg:  darkMode ? "rgba(220,80,60,0.15)" : "#FFF0EE",
-    suppressText:darkMode ? "#FF9080" : "#C0392B",
+    pageBg:      "var(--bg-main)",
+    cardBg:      "var(--bg-surface)",
+    cardBorder:  "var(--border-color)",
+    navBg:       "var(--bg-surface)",
+    textePrimaire:   "var(--text-main)",
+    texteSecondaire: "var(--text-muted)",
+    texteLabel:      "var(--text-muted)",
+    sectionTitreColor: "var(--color-primary)",
+    inputBg:     "var(--bg-main)",
+    inputBorder: "var(--border-color)",
+    inputTexte:  "var(--text-main)",
+    toggleBg:    "var(--color-neutral-100)",
+    boutonBg:    "linear-gradient(135deg, var(--color-primary), #4F46E5)",
+    accent:      "var(--color-warning)",
+    tagTealBg:   "var(--color-primary-light)",
+    tagTealText: "var(--color-primary)",
+    tagOrangeBg: "rgba(245, 158, 11, 0.1)",
+    tagOrangeText: "var(--color-warning)",
+    erreurBg:    "rgba(239, 68, 68, 0.08)",
+    erreurBorder:"rgba(239, 68, 68, 0.3)",
+    erreurTexte: "var(--color-danger)",
+    itemBg:      "var(--bg-main)",
+    itemBorder:  "var(--border-color)",
+    suppressBg:  "rgba(239, 68, 68, 0.08)",
+    suppressText:"var(--color-danger)",
   };
 
   const ajouterHardSkill = () => {
@@ -96,10 +132,12 @@ function CVFormPage() {
   const handleSubmit = async () => {
     setErreur("");
     if (!nom || !email || !titre) {
-      setErreur("Veuillez remplir : nom, email et titre."); return;
+      const msg = "Veuillez remplir : nom, email et titre.";
+      setErreur(msg); toast.error(msg); return;
     }
     if (hardSkills.length === 0) {
-      setErreur("Ajoutez au moins une compétence technique."); return;
+      const msg = "Ajoutez au moins une compétence technique.";
+      setErreur(msg); toast.error(msg); return;
     }
     setLoading(true);
     try {
@@ -110,9 +148,11 @@ function CVFormPage() {
         experiences: experiences.filter(e => e.poste || e.entreprise),
         formations: formations.filter(f => f.diplome || f.etablissement),
       });
+      toast.success("Profil enregistré avec succès !");
       navigate("/dashboard");
     } catch (error) {
-      setErreur("Erreur: " + JSON.stringify(error.response?.data));
+      const msg = "Erreur: " + JSON.stringify(error.response?.data);
+      setErreur(msg); toast.error("Échec de l'enregistrement.");
     } finally {
       setLoading(false);
     }
@@ -132,66 +172,38 @@ function CVFormPage() {
   const sectionStyle = {
     backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`,
     borderRadius: "16px", padding: "1.5rem", marginBottom: "16px",
-    boxShadow: darkMode ? "0 4px 20px rgba(0,0,0,0.3)" : "0 4px 20px rgba(14,90,130,0.06)",
+    boxShadow: "var(--shadow-md)",
   };
 
-  return (
-    <div style={{ minHeight: "100vh", width: "100%", backgroundColor: c.pageBg }}>
-
-      {/* Navbar */}
-      <nav style={{
-        backgroundColor: c.navBg, borderBottom: `1px solid ${c.cardBorder}`,
-        padding: "0 2rem", height: "60px",
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        position: "sticky", top: 0, zIndex: 50,
-      }}>
-        <span style={{
-          fontSize: "18px", fontWeight: "700",
-          background: c.boutonBg, WebkitBackgroundClip: "text",
-          WebkitTextFillColor: "transparent",
-          display: "flex", alignItems: "center", gap: "8px"
-        }}>
-          <Briefcase size={20} style={{ color: "#0E8C8C" }} /> CV Matching
-        </span>
-        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-          <span style={{
-            fontSize: "13px", fontWeight: "600",
-            color: c.sectionTitreColor,
-            backgroundColor: c.tagTealBg,
-            padding: "6px 14px", borderRadius: "20px",
-            border: `1px solid ${darkMode ? "rgba(14,140,140,0.3)" : "rgba(14,140,140,0.2)"}`,
-            display: "flex", alignItems: "center", gap: "6px"
-          }}>
-            <User size={14} /> {getNomDepuisToken()}
-          </span>
-          <button onClick={() => navigate("/dashboard")} style={{
-            padding: "8px 16px", background: "transparent",
-            color: c.texteSecondaire, border: `1px solid ${c.cardBorder}`,
-            borderRadius: "10px", fontSize: "13px", cursor: "pointer",
-            display: "flex", alignItems: "center", gap: "6px"
-          }}>
-            <ArrowLeft size={14} /> Dashboard
-          </button>
-          <button onClick={() => setDarkMode(!darkMode)} style={{
-            width: "38px", height: "38px", borderRadius: "50%",
-            border: `1px solid ${c.cardBorder}`, backgroundColor: c.toggleBg,
-            fontSize: "16px", cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center"
-          }}>
-            {darkMode ? <Sun size={18} color="#FFB300" /> : <Moon size={18} color="#5A7184" />}
-          </button>
+  if (loadingProfil) {
+    return (
+      <AppShell title="Mon Profil CV" breadcrumb="Dashboard / Mon Profil">
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px", paddingTop: "8px" }}>
+          {[1,2,3,4].map(i => (
+            <div key={i} style={{
+              backgroundColor: "var(--bg-surface)",
+              border: "1px solid var(--border-color)",
+              borderRadius: "16px", padding: "1.5rem",
+              boxShadow: "var(--shadow-md)",
+            }}>
+              <div style={{ width: "160px", height: "14px", borderRadius: "8px", backgroundColor: "var(--color-neutral-200)", marginBottom: "16px" }} />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                {[1,2,3,4].map(j => (
+                  <div key={j} style={{ height: "42px", borderRadius: "10px", backgroundColor: "var(--color-neutral-200)" }} />
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
-      </nav>
+      </AppShell>
+    );
+  }
 
-      {/* Contenu */}
-      <div style={{ width: "100%", margin: "0 auto", padding: "2rem 1rem", boxSizing: "border-box" }}>
-
-        <h1 style={{ fontSize: "24px", fontWeight: "700", color: c.textePrimaire, marginBottom: "4px" }}>
-          Mon Profil CV
-        </h1>
-        <p style={{ fontSize: "14px", color: c.texteSecondaire, marginBottom: "24px" }}>
-          Remplissez vos informations pour trouver les offres qui vous correspondent
-        </p>
+  return (
+    <AppShell title="Mon Profil CV" breadcrumb="Dashboard / Mon Profil">
+      <p style={{ fontSize: "14px", color: "var(--text-muted)", marginBottom: "24px" }}>
+        Modifiez vos informations et sauvegardez — les données existantes sont pré-remplies.
+      </p>
 
         {erreur && (
           <div style={{
@@ -269,9 +281,8 @@ function CVFormPage() {
                   backgroundColor: c.tagTealBg, color: c.tagTealText,
                   padding: "5px 12px", borderRadius: "20px", fontSize: "13px",
                   display: "flex", alignItems: "center", gap: "6px",
-                  border: `1px solid ${darkMode ? "rgba(14,140,140,0.3)" : "rgba(14,140,140,0.2)"}`,
+                  border: `1px solid rgba(14,140,140,0.25)`,
                 }}>
-                  {s}
                   {s}
                   <span onClick={() => setHardSkills(hardSkills.filter(x => x !== s))}
                     style={{ cursor: "pointer", display: "flex", alignItems: "center", opacity: 0.7 }}>
@@ -308,9 +319,8 @@ function CVFormPage() {
                   backgroundColor: c.tagOrangeBg, color: c.tagOrangeText,
                   padding: "5px 12px", borderRadius: "20px", fontSize: "13px",
                   display: "flex", alignItems: "center", gap: "6px",
-                  border: `1px solid ${darkMode ? "rgba(255,107,71,0.3)" : "rgba(255,107,71,0.2)"}`,
+                  border: `1px solid rgba(255,107,71,0.25)`,
                 }}>
-                  {s}
                   {s}
                   <span onClick={() => setSoftSkills(softSkills.filter(x => x !== s))}
                     style={{ cursor: "pointer", display: "flex", alignItems: "center", opacity: 0.7 }}>
@@ -438,18 +448,31 @@ function CVFormPage() {
           <button onClick={handleSubmit}
             style={{
               width: "100%", padding: "16px",
-              background: loading ? "#888" : c.boutonBg,
+              background: loading ? "var(--text-muted)" : "linear-gradient(135deg, var(--color-primary), #4F46E5)",
               color: "white", border: "none", borderRadius: "14px",
               fontSize: "16px", fontWeight: "700", cursor: loading ? "not-allowed" : "pointer",
-              boxShadow: "0 8px 24px rgba(14,140,140,0.35)", marginBottom: "2rem",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: "10px"
+              boxShadow: loading ? "none" : "0 6px 20px rgba(37,99,235,0.35)", marginBottom: "2rem",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: "10px",
+              transition: "all 0.2s ease", fontFamily: "inherit",
             }}
             disabled={loading}
+            onMouseEnter={e => { if (!loading) e.currentTarget.style.transform = "translateY(-1px)"; }}
+            onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; }}
           >
-            {loading ? "Enregistrement..." : <>Enregistrer et continuer <Save size={18} /></>}
+            {loading ? (
+              <>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ animation: "spin 1s linear infinite" }}>
+                  <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+                  <path d="M12 2a10 10 0 0 1 10 10" stroke="white" strokeWidth="3" strokeLinecap="round" />
+                </svg>
+                Enregistrement en cours…
+              </>
+            ) : (
+              <>Enregistrer le profil <Save size={18} /></>
+            )}
           </button>
-      </div>
-    </div>
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </AppShell>
   );
 }
 

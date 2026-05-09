@@ -1,56 +1,73 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Briefcase, User, Sun, Moon, Search, ArrowRight,
-  Zap, Users, GraduationCap, Edit2, Database, Globe, History, RefreshCw, LogOut
+  Briefcase, Search, ArrowRight, Zap, Users, User,
+  GraduationCap, Edit2, Database, Globe, RefreshCw,
+  TrendingUp, Star, Clock, CheckCircle2
 } from "lucide-react";
 import API, { getHistory, triggerScraper } from "../services/api";
-
+import AppShell from "../components/AppShell";
+import { Card, CardHeader, CardBody } from "../components/ui/Card";
+import { Badge } from "../components/ui/Badge";
+import { SkeletonKPI } from "../components/ui/Skeleton";
+import { EmptyHistory } from "../components/ui/EmptyState";
+import { Button } from "../components/ui/Button";
+import toast from "react-hot-toast";
 const SOURCES = [
-  { value: "dataset", label: "Dataset local", icon: Database },
-  { value: "rekrute", label: "Rekrute", icon: Globe },
-  { value: "emploima", label: "Emploi.ma", icon: Globe },
-  { value: "marocannonces", label: "MarocAnnonces", icon: Globe },
-  { value: "linkedin", label: "LinkedIn", icon: Globe },
+  { value: "dataset",       label: "Dataset local",  icon: Database },
+  { value: "rekrute",       label: "Rekrute",        icon: Globe },
+  { value: "emploima",      label: "Emploi.ma",      icon: Globe },
+  { value: "marocannonces", label: "MarocAnnonces",  icon: Globe },
+  { value: "linkedin",      label: "LinkedIn",       icon: Globe },
 ];
+
+/** Calcule un score de complétude de profil (0-100) */
+function calculerCompletion(profil) {
+  if (!profil) return 0;
+  const items = [
+    { done: !!profil.personal_info?.nom,      label: "Nom" },
+    { done: !!profil.personal_info?.email,    label: "Email" },
+    { done: !!profil.personal_info?.titre,    label: "Titre" },
+    { done: !!profil.personal_info?.ville,    label: "Ville" },
+    { done: (profil.hard_skills_list?.length || profil.hard_skills?.length || 0) > 0, label: "Compétences" },
+    { done: (profil.experiences?.length || 0) > 0, label: "Expériences" },
+    { done: (profil.formations?.length || 0)  > 0, label: "Formations" },
+  ];
+  const done = items.filter(i => i.done).length;
+  return { score: Math.round((done / items.length) * 100), items };
+}
+
+/** Extrait le prénom du token JWT ou localStorage */
+function getPrenom() {
+  const saved = localStorage.getItem("userNom");
+  if (saved) return saved.split(" ")[0];
+  const token = localStorage.getItem("token");
+  if (!token) return "Utilisateur";
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return (payload.username || "Utilisateur").split(" ")[0];
+  } catch { return "Utilisateur"; }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 
 function DashboardPage() {
   const navigate = useNavigate();
-  const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem("darkMode");
-    if (saved !== null) return saved === "true";
-    return window.matchMedia("(prefers-color-scheme: dark)").matches;
-  });
   const [profil, setProfil] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [historique, setHistorique] = useState([]);
   const [recherche, setRecherche] = useState("");
   const [source, setSource] = useState("dataset");
-  const [historique, setHistorique] = useState([]);
+  const [location, setLocation] = useState("Morocco");
+  const [scraping, setScraping] = useState(false);
+  const [progress, setProgress] = useState(0);
 
-  useEffect(() => {
-    localStorage.setItem("darkMode", darkMode);
-  }, [darkMode]);
-
-  // Extraire le username du token JWT
-  const getNomDepuisToken = () => {
-    const savedNom = localStorage.getItem("userNom");
-    if (savedNom) return savedNom;
-
-    const token = localStorage.getItem("token");
-    if (!token) return "Utilisateur";
-    try {
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      return payload.username || "Utilisateur";
-    } catch { return "Utilisateur"; }
-  };
-
-  // Charger profil + historique
+  // Chargement profil + historique
   useEffect(() => {
     const charger = async () => {
       const token = localStorage.getItem("token");
       if (!token) { setLoading(false); return; }
 
-      // Profil
       try {
         const response = await API.get("/profile/");
         const data = response.data;
@@ -59,19 +76,19 @@ function DashboardPage() {
         }
         setProfil({
           ...data,
-          hard_skills: Array.isArray(data.hard_skills_list) ? data.hard_skills_list
-            : Array.isArray(data.hard_skills) ? data.hard_skills : [],
-          soft_skills: Array.isArray(data.soft_skills_list) ? data.soft_skills_list
-            : Array.isArray(data.soft_skills) ? data.soft_skills : [],
+          hard_skills_list: Array.isArray(data.hard_skills_list) ? data.hard_skills_list
+                           : Array.isArray(data.hard_skills) ? data.hard_skills : [],
+          soft_skills_list: Array.isArray(data.soft_skills_list) ? data.soft_skills_list
+                           : Array.isArray(data.soft_skills) ? data.soft_skills : [],
         });
       } catch {
-        console.log("Backend pas prêt, utilisation des données mock");
+        // Backend non disponible — mode silencieux
       }
 
-      // Historique — silencieux si l'endpoint n'existe pas encore
       try {
         const hist = await getHistory();
-        setHistorique(Array.isArray(hist.data) ? hist.data : []);
+        const histData = hist.data?.history || hist.data;
+        setHistorique(Array.isArray(histData) ? histData : []);
       } catch {
         setHistorique([]);
       }
@@ -81,44 +98,7 @@ function DashboardPage() {
     charger();
   }, []);
 
-  const c = {
-    pageBg: darkMode ? "#0D1B2A" : "#F0F4F8",
-    navBg: darkMode ? "#0F2030" : "#FFFFFF",
-    cardBg: darkMode ? "#1A2B3C" : "#FFFFFF",
-    cardBorder: darkMode ? "#1E3A5F" : "#E2EAF4",
-    cardShadow: darkMode ? "0 4px 20px rgba(0,0,0,0.3)" : "0 4px 20px rgba(14,90,130,0.06)",
-    textePrimaire: darkMode ? "#E8F1F8" : "#1A2B3C",
-    texteSecondaire: darkMode ? "#7A9BB5" : "#5A7184",
-    texteLabel: darkMode ? "#A8C4D8" : "#3D5A73",
-    inputBg: darkMode ? "#0F2030" : "#F7FAFD",
-    inputBorder: darkMode ? "#1E3A5F" : "#C8DCF0",
-    inputTexte: darkMode ? "#E8F1F8" : "#1A2B3C",
-    toggleBg: darkMode ? "#1E3A5F" : "#E2EAF4",
-    boutonBg: "linear-gradient(135deg, #0E8C8C, #0A6B7C)",
-    accent: "#FF6B47",
-    tealColor: darkMode ? "#4DD9D9" : "#0E8C8C",
-    tagTealBg: darkMode ? "rgba(14,140,140,0.2)" : "#E6F7F7",
-    tagTealText: darkMode ? "#4DD9D9" : "#0E8C8C",
-    tagOrangeBg: darkMode ? "rgba(255,107,71,0.2)" : "#FFF0EC",
-    tagOrangeText: darkMode ? "#FF9B7A" : "#CC4A25",
-    statNumColor: darkMode ? "#4DD9D9" : "#0E8C8C",
-    decoText: darkMode ? "#FF9080" : "#C0392B",
-    decoBorder: darkMode ? "#3D1515" : "#FDDEDE",
-    decoBg: darkMode ? "rgba(220,80,60,0.1)" : "#FFF5F5",
-  };
-
-  const data = profil || {
-    personal_info: { nom: getNomDepuisToken(), titre: "Profil non complété", ville: "" },
-    hard_skills_list: [], soft_skills_list: [],
-    experiences: [], formations: [],
-  };
-
-  const hardSkills = data.hard_skills_list || data.hard_skills || [];
-  const softSkills = data.soft_skills_list || data.soft_skills || [];
-
-  const [scraping, setScraping] = useState(false);
-  const [progress, setProgress] = useState(0);
-
+  // Progression du scraping
   useEffect(() => {
     let interval;
     if (scraping) {
@@ -134,312 +114,530 @@ function DashboardPage() {
     return () => clearInterval(interval);
   }, [scraping]);
 
+  // Lancer une recherche
   const lancerRecherche = async () => {
+    if (!recherche.trim() && source === "dataset") {
+      toast.error("Veuillez saisir un mot-clé.");
+      return;
+    }
+    
     if (source !== "dataset") {
       setScraping(true);
       try {
         await triggerScraper(recherche, source);
       } catch (err) {
         console.error("Erreur lancement scraper", err);
+        toast.error("Erreur lors de l'extraction des offres.");
       }
       setScraping(false);
     }
-    navigate("/results", { state: { recherche, source } });
+    
+    navigate("/results", { state: { recherche, source, locationParam: location } });
   };
 
-  if (loading || scraping) return (
-    <div style={{
-      minHeight: "100vh", width: "100%", backgroundColor: c.pageBg,
-      display: "flex", alignItems: "center", justifyContent: "center",
-      flexDirection: "column"
-    }}>
-      <div style={{ textAlign: "center", maxWidth: "400px", width: "100%", padding: "20px" }}>
-        <div style={{ fontSize: "32px", marginBottom: "16px" }}>{scraping ? "🤖" : "⏳"}</div>
-        <h3 style={{ color: c.textePrimaire, marginBottom: "8px" }}>
-          {scraping ? `Recherche sur ${source}...` : "Chargement..."}
-        </h3>
-        <p style={{ color: c.texteSecondaire, fontSize: "14px", marginBottom: "20px" }}>
-          {scraping ? "Extraction des offres en cours. Cela prend généralement entre 15 et 30 secondes." : ""}
-        </p>
-        
-        {scraping && (
-          <div style={{ width: "100%", backgroundColor: c.inputBorder, borderRadius: "10px", height: "8px", overflow: "hidden" }}>
+  // Données dérivées
+  const hardSkills = profil?.hard_skills_list || profil?.hard_skills || [];
+  const softSkills = profil?.soft_skills_list || profil?.soft_skills || [];
+  const nbExperiences = profil?.experiences?.length || 0;
+  const nbFormations  = profil?.formations?.length || 0;
+
+  // Meilleur score historique — depuis l'historique ou le dernier résultat
+  const meilleurScore = historique.length > 0
+    ? Math.max(...historique.map(h => h.best_score || h.top_score || 0), 0)
+    : 0;
+
+  // Dernière recherche
+  const derniereRecherche = historique[0]?.keyword || historique[0]?.query || null;
+
+  // Completion
+  const { score: completionScore, items: completionItems } = calculerCompletion(profil);
+
+  // KPIs
+  const kpis = [
+    {
+      label: "Offres matchées",
+    value: historique.reduce((s, h) => s + (h.results_count || h.nb_results || 0), 0) || "—",
+      icon: <Briefcase size={20} />,
+      color: "var(--color-primary)",
+      bg: "rgba(37, 99, 235, 0.1)",
+    },
+    {
+      label: "Meilleur score",
+      value: meilleurScore > 0 ? `${meilleurScore}%` : "—",
+      icon: <Star size={20} />,
+      color: "var(--color-warning)",
+      bg: "rgba(245, 158, 11, 0.1)",
+    },
+    {
+      label: "Compétences",
+      value: hardSkills.length + softSkills.length,
+      icon: <Zap size={20} />,
+      color: "var(--color-success)",
+      bg: "rgba(16, 185, 129, 0.1)",
+    },
+    {
+      label: "Dernière recherche",
+      value: derniereRecherche ? `« ${derniereRecherche} »` : "—",
+      icon: <Clock size={20} />,
+      color: "#8B5CF6",
+      bg: "rgba(139, 92, 246, 0.1)",
+      small: true,
+    },
+  ];
+
+  if (scraping) {
+    return (
+      <div style={{
+        minHeight: "100vh", width: "100%", backgroundColor: "var(--bg-main)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        flexDirection: "column"
+      }}>
+        <div className="glass" style={{
+          textAlign: "center", maxWidth: "450px", width: "100%", padding: "40px",
+          borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)"
+        }}>
+          <div style={{ fontSize: "48px", marginBottom: "20px" }}>🤖</div>
+          <h3 style={{ color: "var(--text-main)", marginBottom: "12px", fontSize: "20px", fontWeight: 700 }}>
+            Recherche sur {SOURCES.find(s => s.value === source)?.label || source}...
+          </h3>
+          <p style={{ color: "var(--text-muted)", fontSize: "14px", marginBottom: "24px", lineHeight: 1.5 }}>
+            Extraction des offres en temps réel. Cela prend généralement entre 15 et 30 secondes selon le site.
+          </p>
+          
+          <div style={{
+            width: "100%", backgroundColor: "var(--color-primary-light)",
+            borderRadius: "var(--radius-full)", height: "8px", overflow: "hidden"
+          }}>
             <div style={{
-              width: `${progress}%`, height: "100%", backgroundColor: "#0E8C8C",
-              transition: "width 0.5s ease", borderRadius: "10px"
+              width: `${progress}%`, height: "100%", background: "var(--gradient-primary)",
+              transition: "width 0.5s ease", borderRadius: "var(--radius-full)",
+              boxShadow: "var(--shadow-glow)"
             }} />
           </div>
-        )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   return (
-    <div style={{ minHeight: "100vh", width: "100%", backgroundColor: c.pageBg }}>
-
-      {/* ── NAVBAR ── */}
-      <nav style={{
-        backgroundColor: c.navBg, borderBottom: `1px solid ${c.cardBorder}`,
-        padding: "0 2rem", height: "64px",
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        position: "sticky", top: 0, zIndex: 50,
-        boxShadow: darkMode ? "0 2px 20px rgba(0,0,0,0.3)" : "0 2px 20px rgba(14,90,130,0.08)",
+    <AppShell title={`Bonjour ${getPrenom()} 👋`} breadcrumb="Accueil / Dashboard">
+      {/* ── KPI Cards dans un Cadre ────────────────────────────── */}
+      <div style={{
+        border: '1px solid var(--border-color)',
+        borderRadius: 'var(--radius-lg)',
+        padding: '20px',
+        backgroundColor: 'var(--bg-surface)',
+        marginBottom: '24px',
+        boxShadow: 'var(--shadow-sm)'
       }}>
-        <span style={{
-          fontSize: "20px", fontWeight: "700",
-          background: c.boutonBg,
-          WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-          display: "flex", alignItems: "center", gap: "8px"
-        }}>
-          <Briefcase size={22} style={{ color: "#0E8C8C" }} /> CV Matching
-        </span>
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <span style={{
-            fontSize: "13px", fontWeight: "600",
-            color: c.tealColor,
-            backgroundColor: c.tagTealBg,
-            padding: "6px 14px", borderRadius: "20px",
-            border: `1px solid ${darkMode ? "rgba(14,140,140,0.3)" : "rgba(14,140,140,0.2)"}`,
-          }}>
-            <User size={14} /> {profil?.personal_info?.nom || getNomDepuisToken()}
-          </span>
-          <button onClick={() => setDarkMode(!darkMode)} style={{
-            width: "38px", height: "38px", borderRadius: "50%",
-            border: `1px solid ${c.cardBorder}`, backgroundColor: c.toggleBg,
-            fontSize: "16px", cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center"
-          }}>
-            {darkMode ? <Sun size={18} color="#FFB300" /> : <Moon size={18} color="#5A7184" />}
-          </button>
-          <button onClick={() => { localStorage.removeItem("token"); navigate("/login"); }}
-            style={{
-              padding: "8px 16px", backgroundColor: c.decoBg,
-              color: c.decoText, border: `1px solid ${c.decoBorder}`,
-              borderRadius: "10px", fontSize: "13px", fontWeight: "600", cursor: "pointer",
-              display: "flex", alignItems: "center", gap: "6px"
-            }}>
-            <LogOut size={14} /> Déconnexion
-          </button>
-        </div>
-      </nav>
-
-      {/* ── CONTENU ── */}
-      <div style={{ maxWidth: "960px", margin: "0 auto", padding: "2rem 1rem" }}>
-
-        {/* Bienvenue */}
-        <div style={{ marginBottom: "28px" }}>
-          <h1 style={{ fontSize: "28px", fontWeight: "700", color: c.textePrimaire, marginBottom: "6px" }}>
-            Bonjour, {data.personal_info?.nom?.split(" ")[0]}
-          </h1>
-          <p style={{ fontSize: "15px", color: c.texteSecondaire }}>
-            {data.personal_info?.titre || "Complétez votre profil pour commencer"}
-            {data.personal_info?.ville ? ` · ${data.personal_info.ville}` : ""}
-          </p>
-        </div>
-
-        {/* ── Barre de recherche avec sélecteur de source ── */}
+        <h2 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 16px', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Briefcase size={18} color="var(--color-primary)" /> Vue d'ensemble
+        </h2>
         <div style={{
-          backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`,
-          borderRadius: "16px", padding: "1.5rem", marginBottom: "20px",
-          boxShadow: c.cardShadow,
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gap: "16px",
         }}>
-          <h2 style={{ fontSize: "16px", fontWeight: "700", color: c.tealColor, marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
-            <Search size={18} /> Trouver des offres
-          </h2>
-
-          {/* Ligne 1 : input + bouton */}
-          <div style={{ display: "flex", gap: "10px", marginBottom: "12px" }}>
-            <input
-              style={{
-                flex: 1, padding: "12px 16px", borderRadius: "12px",
-                border: `1.5px solid ${c.inputBorder}`, backgroundColor: c.inputBg,
-                color: c.inputTexte, fontSize: "14px", outline: "none",
-              }}
-              value={recherche}
-              onChange={(e) => setRecherche(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && lancerRecherche()}
-              onFocus={(e) => e.target.style.borderColor = "#0E8C8C"}
-              onBlur={(e) => e.target.style.borderColor = c.inputBorder}
-              placeholder="Ex: Développeur React, Data Scientist..."
-            />
-            <button
-              onClick={lancerRecherche}
-              style={{
-                padding: "12px 24px", background: c.boutonBg, color: "white",
-                border: "none", borderRadius: "12px", fontSize: "14px",
-                fontWeight: "600", cursor: "pointer", whiteSpace: "nowrap",
-                boxShadow: "0 6px 16px rgba(14,140,140,0.3)",
-                display: "flex", alignItems: "center", gap: "8px"
+        {loading
+          ? [1,2,3,4].map(i => <SkeletonKPI key={i} />)
+          : kpis.map(({ label, value, icon, color, bg, small }) => (
+            <Card key={label} style={{ padding: "1.25rem" }}>
+              <div style={{
+                width: "40px", height: "40px",
+                borderRadius: "var(--radius-md)",
+                backgroundColor: bg,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                color, marginBottom: "12px",
               }}>
-              Lancer <ArrowRight size={16} />
-            </button>
-          </div>
-
-          {/* Ligne 2 : sélecteur de source */}
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-            <span style={{ fontSize: "13px", fontWeight: "600", color: c.texteLabel }}>
-              Source :
-            </span>
-            {SOURCES.map(({ value, label, icon: Icon }) => (
-              <button
-                key={value}
-                onClick={() => setSource(value)}
-                style={{
-                  padding: "6px 16px",
-                  borderRadius: "20px",
-                  fontSize: "12px",
-                  fontWeight: "600",
-                  cursor: "pointer",
-                  transition: "all 0.2s",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  border: source === value
-                    ? `1.5px solid ${c.tealColor}`
-                    : `1.5px solid ${c.inputBorder}`,
-                  backgroundColor: source === value ? c.tagTealBg : "transparent",
-                  color: source === value ? c.tealColor : c.texteSecondaire,
-                }}
-              >
-                <Icon size={14} />
+                {icon}
+              </div>
+              <p style={{ margin: "0 0 4px", fontSize: "12px", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>
                 {label}
-              </button>
-            ))}
-          </div>
+              </p>
+              <p style={{
+                margin: 0, fontSize: small ? "15px" : "26px",
+                fontWeight: 700, color: "var(--text-main)",
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}>
+                {value}
+              </p>
+            </Card>
+          ))
+        }
         </div>
+      </div>
 
-        {/* Stats */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "12px", marginBottom: "20px" }}>
-          {[
-            { label: "Hard Skills", valeur: hardSkills.length, icon: <Zap size={20} /> },
-            { label: "Soft Skills", valeur: softSkills.length, icon: <Users size={20} /> },
-            { label: "Expériences", valeur: data.experiences?.length || 0, icon: <Briefcase size={20} /> },
-            { label: "Formations", valeur: data.formations?.length || 0, icon: <GraduationCap size={20} /> },
-          ].map(({ label, valeur, icon }) => (
-            <div key={label} style={{
-              backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`,
-              borderRadius: "14px", padding: "1.2rem", textAlign: "center",
-              boxShadow: c.cardShadow,
-            }}>
-              <div style={{ marginBottom: "6px", color: c.tealColor }}>{icon}</div>
-              <p style={{ fontSize: "11px", color: c.texteSecondaire, marginBottom: "4px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px" }}>{label}</p>
-              <p style={{ fontSize: "28px", fontWeight: "700", color: c.statNumColor, margin: 0 }}>{valeur}</p>
+      {/* ── Grid : Recherche + Completion dans un Cadre ────────── */}
+      <div style={{
+        border: '1px solid var(--border-color)',
+        borderRadius: 'var(--radius-lg)',
+        padding: '20px',
+        backgroundColor: 'var(--bg-surface)',
+        marginBottom: '24px',
+        boxShadow: 'var(--shadow-sm)'
+      }}>
+        <h2 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 16px', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Search size={18} color="var(--color-warning)" /> Actions & Progression
+        </h2>
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 340px",
+          gap: "20px",
+        }}
+          className="dashboard-grid"
+        >
+        <style>{`
+          @media (max-width: 1024px) {
+            .dashboard-grid { grid-template-columns: 1fr !important; }
+          }
+        `}</style>
+
+        {/* ── Bloc de recherche ── */}
+        <Card>
+          <CardHeader
+            title="Trouver des offres"
+            subtitle="Lancez une recherche par mot-clé"
+            icon={<Search size={18} />}
+          />
+          <CardBody>
+            {/* Input + bouton */}
+            <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
+              <input
+                value={recherche}
+                onChange={e => setRecherche(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && lancerRecherche()}
+                placeholder="Ex: Développeur React, Data Scientist..."
+                style={{
+                  flex: 1, padding: "12px 16px",
+                  borderRadius: "var(--radius-md)",
+                  border: "1.5px solid var(--border-color)",
+                  backgroundColor: "var(--bg-main)",
+                  color: "var(--text-main)",
+                  fontSize: "14px", outline: "none",
+                  fontFamily: "inherit",
+                  transition: "border-color 0.2s",
+                }}
+                onFocus={e => e.target.style.borderColor = "var(--color-primary)"}
+                onBlur={e => e.target.style.borderColor = "var(--border-color)"}
+              />
+              <Button variant="primary" onClick={lancerRecherche} icon={<ArrowRight size={16} />}>
+                Lancer
+              </Button>
             </div>
-          ))}
-        </div>
 
-        {/* Profil */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
-
-          {/* Compétences */}
-          <div style={{ backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`, borderRadius: "16px", padding: "1.5rem", boxShadow: c.cardShadow }}>
-            <h3 style={{ fontSize: "14px", fontWeight: "700", color: c.tealColor, marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
-              <Zap size={16} /> Compétences techniques
-            </h3>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}>
-              {hardSkills.length > 0 ? hardSkills.map((s) => (
-                <span key={s} style={{ backgroundColor: c.tagTealBg, color: c.tagTealText, padding: "5px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "600" }}>{s}</span>
-              )) : <p style={{ fontSize: "13px", color: c.texteSecondaire }}>Aucune compétence ajoutée</p>}
-            </div>
-            <h3 style={{ fontSize: "14px", fontWeight: "700", color: c.accent, marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
-              <Users size={16} /> Soft Skills
-            </h3>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-              {softSkills.length > 0 ? softSkills.map((s) => (
-                <span key={s} style={{ backgroundColor: c.tagOrangeBg, color: c.tagOrangeText, padding: "5px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "600" }}>{s}</span>
-              )) : <p style={{ fontSize: "13px", color: c.texteSecondaire }}>Aucun soft skill ajouté</p>}
-            </div>
-          </div>
-
-          {/* Expériences & Formations */}
-          <div style={{ backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`, borderRadius: "16px", padding: "1.5rem", boxShadow: c.cardShadow }}>
-            <h3 style={{ fontSize: "14px", fontWeight: "700", color: c.tealColor, marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
-              <Briefcase size={16} /> Expériences
-            </h3>
-            {data.experiences?.length > 0 ? data.experiences.map((exp, i) => (
-              <div key={i} style={{ borderLeft: `3px solid ${c.tealColor}`, paddingLeft: "12px", marginBottom: "12px" }}>
-                <p style={{ fontSize: "13px", fontWeight: "700", color: c.textePrimaire, margin: 0 }}>{exp.poste || "—"}</p>
-                <p style={{ fontSize: "12px", color: c.texteSecondaire, margin: "2px 0 0" }}>{exp.entreprise || "—"}</p>
+            {/* Sélecteur source */}
+            <div style={{ marginBottom: "8px" }}>
+              <p style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-muted)", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                Source
+              </p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                {SOURCES.map(({ value, label, icon: Icon }) => (
+                  <button
+                    key={value}
+                    onClick={() => setSource(value)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: "6px",
+                      padding: "6px 14px", borderRadius: "var(--radius-full)",
+                      fontSize: "12px", fontWeight: 600,
+                      cursor: "pointer", fontFamily: "inherit",
+                      transition: "all 0.2s",
+                      border: source === value
+                        ? "1.5px solid var(--color-primary)"
+                        : "1.5px solid var(--border-color)",
+                      backgroundColor: source === value
+                        ? "var(--color-primary-light)"
+                        : "transparent",
+                      color: source === value
+                        ? "var(--color-primary)"
+                        : "var(--text-muted)",
+                    }}
+                  >
+                    <Icon size={13} />
+                    {label}
+                  </button>
+                ))}
               </div>
-            )) : <p style={{ fontSize: "13px", color: c.texteSecondaire }}>Aucune expérience ajoutée</p>}
+            </div>
 
-            <h3 style={{ fontSize: "14px", fontWeight: "700", color: c.accent, margin: "16px 0 14px", display: "flex", alignItems: "center", gap: "8px" }}>
-              <GraduationCap size={16} /> Formations
-            </h3>
-            {data.formations?.length > 0 ? data.formations.map((form, i) => (
-              <div key={i} style={{ borderLeft: `3px solid ${c.accent}`, paddingLeft: "12px", marginBottom: "12px" }}>
-                <p style={{ fontSize: "13px", fontWeight: "700", color: c.textePrimaire, margin: 0 }}>{form.diplome || "—"}</p>
-                <p style={{ fontSize: "12px", color: c.texteSecondaire, margin: "2px 0 0" }}>{form.etablissement || "—"}</p>
+            {/* Champ localisation LinkedIn */}
+            {source === "linkedin" && (
+              <div style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "10px" }}>
+                <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                  📍 Localisation :
+                </span>
+                <input
+                  value={location}
+                  onChange={e => setLocation(e.target.value)}
+                  placeholder="Ex: Morocco, Casablanca..."
+                  style={{
+                    flex: 1, padding: "10px 14px",
+                    borderRadius: "var(--radius-md)",
+                    border: "1.5px solid var(--border-color)",
+                    backgroundColor: "var(--bg-main)",
+                    color: "var(--text-main)",
+                    fontSize: "13px", outline: "none", fontFamily: "inherit",
+                  }}
+                />
               </div>
-            )) : <p style={{ fontSize: "13px", color: c.texteSecondaire }}>Aucune formation ajoutée</p>}
-          </div>
-        </div>
+            )}
 
-        {/* ── Historique des recherches ── */}
-        {historique.length > 0 && (
-          <div style={{
-            backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`,
-            borderRadius: "16px", padding: "1.5rem", marginBottom: "20px",
-            boxShadow: c.cardShadow,
-          }}>
-            <h2 style={{ fontSize: "16px", fontWeight: "700", color: c.tealColor, marginBottom: "14px" }}>
-              🕑 Historique des recherches
-            </h2>
+            {/* Avertissement scraping temps-réel */}
+            {source !== "dataset" && (
+              <div style={{
+                marginTop: "12px", padding: "10px 14px",
+                borderRadius: "var(--radius-md)",
+                backgroundColor: "rgba(245, 158, 11, 0.08)",
+                border: "1px solid rgba(245, 158, 11, 0.3)",
+                fontSize: "12px", color: "var(--color-warning)",
+                display: "flex", alignItems: "center", gap: "8px",
+              }}>
+                ⚡ Source temps-réel — le navigateur s'ouvrira en arrière-plan (~30–60 s).
+              </div>
+            )}
+          </CardBody>
+        </Card>
+
+        {/* ── Completion du profil ── */}
+        <Card>
+          <CardHeader
+            title="Profil complété"
+            subtitle={`${completionScore || 0}% des informations renseignées`}
+            icon={<TrendingUp size={18} />}
+            action={
+              <Button variant="ghost" size="sm" onClick={() => navigate("/cv-form")} icon={<Edit2 size={13} />}>
+                Modifier
+              </Button>
+            }
+          />
+          <CardBody>
+            {/* Barre de progression */}
+            <div style={{ marginBottom: "16px" }}>
+              <div style={{
+                height: "8px", borderRadius: "var(--radius-full)",
+                backgroundColor: "var(--color-neutral-200)",
+                overflow: "hidden",
+              }}>
+                <div style={{
+                  height: "100%",
+                  width: `${completionScore}%`,
+                  borderRadius: "var(--radius-full)",
+                  background: completionScore >= 80
+                    ? "var(--color-success)"
+                    : completionScore >= 50
+                    ? "var(--color-warning)"
+                    : "var(--color-danger)",
+                  transition: "width 0.8s ease",
+                }} />
+              </div>
+            </div>
+
+            {/* Checklist */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {loading
+                ? [1,2,3,4,5].map(i => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div style={{ width: 16, height: 16, borderRadius: "50%", backgroundColor: "var(--color-neutral-200)" }} />
+                    <div style={{ height: "12px", backgroundColor: "var(--color-neutral-200)", borderRadius: "4px", flex: 1 }} />
+                  </div>
+                ))
+                : (completionItems || []).map(({ label, done }) => (
+                  <div key={label} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <CheckCircle2
+                      size={16}
+                      color={done ? "var(--color-success)" : "var(--color-neutral-300)"}
+                      fill={done ? "rgba(16, 185, 129, 0.15)" : "transparent"}
+                    />
+                    <span style={{
+                      fontSize: "13px",
+                      color: done ? "var(--text-main)" : "var(--text-muted)",
+                      fontWeight: done ? 500 : 400,
+                    }}>
+                      {label}
+                    </span>
+                    {!done && (
+                      <Badge variant="warning" size="sm">Manquant</Badge>
+                    )}
+                  </div>
+                ))
+              }
+            </div>
+          </CardBody>
+        </Card>
+        </div>
+      </div>
+
+      {/* ── Profil : Compétences + Expériences dans un Cadre ─── */}
+      <div style={{
+        border: '1px solid var(--border-color)',
+        borderRadius: 'var(--radius-lg)',
+        padding: '20px',
+        backgroundColor: 'var(--bg-surface)',
+        marginBottom: '24px',
+        boxShadow: 'var(--shadow-sm)'
+      }}>
+        <h2 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 16px', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <User size={18} color="var(--color-success)" /> Mes informations CV
+        </h2>
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "20px",
+        }}
+          className="profile-grid"
+        >
+        <style>{`
+          @media (max-width: 768px) {
+            .profile-grid { grid-template-columns: 1fr !important; }
+          }
+        `}</style>
+
+        {/* Compétences */}
+        <Card>
+          <CardHeader title="Compétences" icon={<Zap size={18} />} />
+          <CardBody>
+            {loading ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                {[80, 100, 70, 90, 60, 110].map(w => (
+                  <div key={w} style={{ height: "28px", width: `${w}px`, borderRadius: "var(--radius-full)", backgroundColor: "var(--color-neutral-200)" }} />
+                ))}
+              </div>
+            ) : (
+              <>
+                <p style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px" }}>
+                  Hard Skills
+                </p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "16px" }}>
+                  {hardSkills.length > 0
+                    ? hardSkills.map(s => <Badge key={s} variant="info">{s}</Badge>)
+                    : <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>Aucune compétence ajoutée</span>
+                  }
+                </div>
+                <p style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px" }}>
+                  Soft Skills
+                </p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                  {softSkills.length > 0
+                    ? softSkills.map(s => <Badge key={s} variant="neutral">{s}</Badge>)
+                    : <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>Aucun soft skill ajouté</span>
+                  }
+                </div>
+              </>
+            )}
+          </CardBody>
+        </Card>
+
+        {/* Expériences & Formations */}
+        <Card>
+          <CardHeader title="Parcours" icon={<Briefcase size={18} />} />
+          <CardBody>
+            <p style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "10px" }}>
+              Expériences ({nbExperiences})
+            </p>
+            {nbExperiences > 0
+              ? profil.experiences.slice(0, 3).map((exp, i) => (
+                <div key={i} style={{
+                  borderLeft: "3px solid var(--color-primary)",
+                  paddingLeft: "12px", marginBottom: "12px",
+                }}>
+                  <p style={{ margin: 0, fontSize: "13px", fontWeight: 600, color: "var(--text-main)" }}>{exp.poste || "—"}</p>
+                  <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--text-muted)" }}>{exp.entreprise || "—"}</p>
+                </div>
+              ))
+              : <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "16px" }}>Aucune expérience</p>
+            }
+
+            <p style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "10px", marginTop: "16px" }}>
+              Formations ({nbFormations})
+            </p>
+            {nbFormations > 0
+              ? profil.formations.slice(0, 2).map((form, i) => (
+                <div key={i} style={{
+                  borderLeft: "3px solid var(--color-success)",
+                  paddingLeft: "12px", marginBottom: "12px",
+                }}>
+                  <p style={{ margin: 0, fontSize: "13px", fontWeight: 600, color: "var(--text-main)" }}>{form.diplome || "—"}</p>
+                  <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--text-muted)" }}>{form.etablissement || "—"}</p>
+                </div>
+              ))
+              : <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>Aucune formation</p>
+            }
+          </CardBody>
+        </Card>
+        </div>
+      </div>
+
+      {/* ── Historique des recherches dans un Cadre ─────────────── */}
+      <div style={{
+        border: '1px solid var(--border-color)',
+        borderRadius: 'var(--radius-lg)',
+        padding: '20px',
+        backgroundColor: 'var(--bg-surface)',
+        marginBottom: '24px',
+        boxShadow: 'var(--shadow-sm)'
+      }}>
+        <h2 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 16px', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Clock size={18} color="#8B5CF6" /> Historique
+        </h2>
+        <Card>
+          <CardBody style={{ padding: historique.length === 0 ? 0 : "1.5rem" }}>
+          {loading ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              {historique.map((item, i) => {
+              {[1,2,3].map(i => (
+                <div key={i} style={{ height: "56px", borderRadius: "var(--radius-md)", backgroundColor: "var(--color-neutral-100)" }} />
+              ))}
+            </div>
+          ) : historique.length === 0 ? (
+            <EmptyHistory />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {historique.slice(0, 6).map((item, i) => {
                 const srcLabel = SOURCES.find(s => s.value === item.source)?.label || item.source || "—";
-                const date = item.date
-                  ? new Date(item.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+                const date = item.searched_at
+                  ? new Date(item.searched_at).toLocaleDateString("fr-FR", {
+                      day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
+                    })
                   : null;
                 return (
                   <div key={i} style={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    padding: "10px 14px", borderRadius: "12px",
-                    backgroundColor: darkMode ? "#0F2030" : "#F7FAFD",
-                    border: `1px solid ${c.inputBorder}`,
+                    display: "flex", alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "12px 14px",
+                    borderRadius: "var(--radius-md)",
+                    backgroundColor: "var(--bg-main)",
+                    border: "1px solid var(--border-color)",
+                    transition: "border-color 0.2s",
+                    cursor: "default",
                   }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      <Search size={16} color={c.texteSecondaire} />
+                      <Search size={15} color="var(--text-muted)" />
                       <div>
-                        <p style={{ fontSize: "14px", fontWeight: "600", color: c.textePrimaire, margin: 0 }}>
-                          {item.query || item.recherche || "—"}
+                        <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-main)", margin: 0 }}>
+                          {item.keyword || item.query || "—"}
                         </p>
-                        <p style={{ fontSize: "12px", color: c.texteSecondaire, margin: "3px 0 0" }}>
+                        <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: "2px 0 0" }}>
                           {srcLabel}{date ? ` · ${date}` : ""}
                         </p>
                       </div>
                     </div>
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={<RefreshCw size={12} />}
                       onClick={() => navigate("/results", {
-                        state: { recherche: item.query || item.recherche, source: item.source || "dataset" }
+                        state: { recherche: item.keyword || item.query, source: item.source || "dataset" }
                       })}
-                      style={{
-                        padding: "6px 14px", borderRadius: "8px", fontSize: "12px",
-                        fontWeight: "600", cursor: "pointer",
-                        backgroundColor: c.tagTealBg, color: c.tealColor,
-                        border: `1px solid ${darkMode ? "rgba(14,140,140,0.3)" : "rgba(14,140,140,0.2)"}`,
-                        display: "flex", alignItems: "center", gap: "6px"
-                      }}>
-                      Relancer <RefreshCw size={12} />
-                    </button>
+                    >
+                      Relancer
+                    </Button>
                   </div>
                 );
               })}
             </div>
-          </div>
-        )}
-
-        {/* Bouton modifier */}
-        <button onClick={() => navigate("/cv-form")} style={{
-          padding: "12px 28px", backgroundColor: "transparent",
-          color: c.tealColor, border: `1.5px solid ${c.tealColor}`,
-          borderRadius: "12px", fontSize: "14px", fontWeight: "600", cursor: "pointer",
-          display: "flex", alignItems: "center", gap: "8px"
-        }}>
-          <Edit2 size={16} /> Modifier mon profil
-        </button>
+          )}
+        </CardBody>
+        </Card>
       </div>
-    </div>
+    </AppShell>
   );
 }
 
