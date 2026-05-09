@@ -368,16 +368,30 @@ function CVFormPage() {
           <button onClick={handleSubmit}
             style={{
               width: "100%", padding: "16px",
-              background: loading ? "#888" : c.boutonBg,
+              background: loading ? "var(--text-muted)" : "linear-gradient(135deg, var(--color-primary), #4F46E5)",
               color: "white", border: "none", borderRadius: "14px",
               fontSize: "16px", fontWeight: "700", cursor: loading ? "not-allowed" : "pointer",
-              boxShadow: "0 8px 24px rgba(14,140,140,0.35)", marginBottom: "2rem",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: "10px"
+              boxShadow: loading ? "none" : "0 6px 20px rgba(37,99,235,0.35)", marginBottom: "2rem",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: "10px",
+              transition: "all 0.2s ease", fontFamily: "inherit",
             }}
             disabled={loading}
+            onMouseEnter={e => { if (!loading) e.currentTarget.style.transform = "translateY(-1px)"; }}
+            onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; }}
           >
-            {loading ? "Enregistrement..." : <>Enregistrer et continuer <Save size={18} /></>}
+            {loading ? (
+              <>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ animation: "spin 1s linear infinite" }}>
+                  <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+                  <path d="M12 2a10 10 0 0 1 10 10" stroke="white" strokeWidth="3" strokeLinecap="round" />
+                </svg>
+                Enregistrement en cours…
+              </>
+            ) : (
+              <>Enregistrer le profil <Save size={18} /></>
+            )}
           </button>
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </AppShell>
   );
 }

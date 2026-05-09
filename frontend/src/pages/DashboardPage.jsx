@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Briefcase, Search, ArrowRight, Zap, Users,
+  Briefcase, Search, ArrowRight, Zap, Users, User,
   GraduationCap, Edit2, Database, Globe, RefreshCw,
   TrendingUp, Star, Clock, CheckCircle2
 } from "lucide-react";
@@ -111,9 +111,9 @@ function DashboardPage() {
   const nbExperiences = profil?.experiences?.length || 0;
   const nbFormations  = profil?.formations?.length || 0;
 
-  // Meilleur score historique
+  // Meilleur score historique — depuis l'historique ou le dernier résultat
   const meilleurScore = historique.length > 0
-    ? Math.max(...historique.map(h => h.best_score || 0), 0)
+    ? Math.max(...historique.map(h => h.best_score || h.top_score || 0), 0)
     : 0;
 
   // Dernière recherche
@@ -126,7 +126,7 @@ function DashboardPage() {
   const kpis = [
     {
       label: "Offres matchées",
-      value: historique.reduce((s, h) => s + (h.nb_results || 0), 0) || "—",
+    value: historique.reduce((s, h) => s + (h.results_count || h.nb_results || 0), 0) || "—",
       icon: <Briefcase size={20} />,
       color: "var(--color-primary)",
       bg: "rgba(37, 99, 235, 0.1)",
@@ -157,13 +157,23 @@ function DashboardPage() {
 
   return (
     <AppShell title={`Bonjour ${getPrenom()} 👋`} breadcrumb="Accueil / Dashboard">
-      {/* ── KPI Cards ────────────────────────────── */}
+      {/* ── KPI Cards dans un Cadre ────────────────────────────── */}
       <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-        gap: "16px",
-        marginBottom: "24px",
+        border: '1px solid var(--border-color)',
+        borderRadius: 'var(--radius-lg)',
+        padding: '20px',
+        backgroundColor: 'var(--bg-surface)',
+        marginBottom: '24px',
+        boxShadow: 'var(--shadow-sm)'
       }}>
+        <h2 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 16px', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Briefcase size={18} color="var(--color-primary)" /> Vue d'ensemble
+        </h2>
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gap: "16px",
+        }}>
         {loading
           ? [1,2,3,4].map(i => <SkeletonKPI key={i} />)
           : kpis.map(({ label, value, icon, color, bg, small }) => (
@@ -190,17 +200,28 @@ function DashboardPage() {
             </Card>
           ))
         }
+        </div>
       </div>
 
-      {/* ── Grid : Recherche + Completion ────────── */}
+      {/* ── Grid : Recherche + Completion dans un Cadre ────────── */}
       <div style={{
-        display: "grid",
-        gridTemplateColumns: "1fr 340px",
-        gap: "20px",
-        marginBottom: "20px",
-      }}
-        className="dashboard-grid"
-      >
+        border: '1px solid var(--border-color)',
+        borderRadius: 'var(--radius-lg)',
+        padding: '20px',
+        backgroundColor: 'var(--bg-surface)',
+        marginBottom: '24px',
+        boxShadow: 'var(--shadow-sm)'
+      }}>
+        <h2 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 16px', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Search size={18} color="var(--color-warning)" /> Actions & Progression
+        </h2>
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 340px",
+          gap: "20px",
+        }}
+          className="dashboard-grid"
+        >
         <style>{`
           @media (max-width: 1024px) {
             .dashboard-grid { grid-template-columns: 1fr !important; }
@@ -316,7 +337,7 @@ function DashboardPage() {
         <Card>
           <CardHeader
             title="Profil complété"
-            subtitle={`${completionScore}% des informations renseignées`}
+            subtitle={`${completionScore || 0}% des informations renseignées`}
             icon={<TrendingUp size={18} />}
             action={
               <Button variant="ghost" size="sm" onClick={() => navigate("/cv-form")} icon={<Edit2 size={13} />}>
@@ -378,17 +399,28 @@ function DashboardPage() {
             </div>
           </CardBody>
         </Card>
+        </div>
       </div>
 
-      {/* ── Profil : Compétences + Expériences ─── */}
+      {/* ── Profil : Compétences + Expériences dans un Cadre ─── */}
       <div style={{
-        display: "grid",
-        gridTemplateColumns: "1fr 1fr",
-        gap: "20px",
-        marginBottom: "20px",
-      }}
-        className="profile-grid"
-      >
+        border: '1px solid var(--border-color)',
+        borderRadius: 'var(--radius-lg)',
+        padding: '20px',
+        backgroundColor: 'var(--bg-surface)',
+        marginBottom: '24px',
+        boxShadow: 'var(--shadow-sm)'
+      }}>
+        <h2 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 16px', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <User size={18} color="var(--color-success)" /> Mes informations CV
+        </h2>
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "20px",
+        }}
+          className="profile-grid"
+        >
         <style>{`
           @media (max-width: 768px) {
             .profile-grid { grid-template-columns: 1fr !important; }
@@ -467,15 +499,23 @@ function DashboardPage() {
             }
           </CardBody>
         </Card>
+        </div>
       </div>
 
-      {/* ── Historique des recherches ─────────────── */}
-      <Card>
-        <CardHeader
-          title="Recherches récentes"
-          icon={<Clock size={18} />}
-        />
-        <CardBody style={{ padding: historique.length === 0 ? 0 : "1.5rem" }}>
+      {/* ── Historique des recherches dans un Cadre ─────────────── */}
+      <div style={{
+        border: '1px solid var(--border-color)',
+        borderRadius: 'var(--radius-lg)',
+        padding: '20px',
+        backgroundColor: 'var(--bg-surface)',
+        marginBottom: '24px',
+        boxShadow: 'var(--shadow-sm)'
+      }}>
+        <h2 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 16px', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Clock size={18} color="#8B5CF6" /> Historique
+        </h2>
+        <Card>
+          <CardBody style={{ padding: historique.length === 0 ? 0 : "1.5rem" }}>
           {loading ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
               {[1,2,3].map(i => (
@@ -531,7 +571,8 @@ function DashboardPage() {
             </div>
           )}
         </CardBody>
-      </Card>
+        </Card>
+      </div>
     </AppShell>
   );
 }

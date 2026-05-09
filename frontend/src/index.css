@@ -1,16 +1,62 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
+  /* Colors */
+  --color-primary: #2563EB;
+  --color-primary-light: rgba(37, 99, 235, 0.1);
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-danger: #EF4444;
+
+  /* Neutrals & Backgrounds - Light Mode */
+  --bg-main: #F3F4F6;
+  --bg-surface: #FFFFFF;
+  --border-color: #D1D5DB; /* Increased contrast for frames */
+  
+  /* Typography */
+  --text-main: #111827;
+  --text-muted: #6B7280;
+
+  /* Shadows & Radius */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-full: 9999px;
+}
+
+[data-theme='dark'] {
+  /* Neutrals & Backgrounds - Dark Mode */
+  --bg-main: #0F172A;
+  --bg-surface: #1E293B;
+  --border-color: #334155;
+  
+  /* Typography */
+  --text-main: #F8FAFC;
+  --text-muted: #94A3B8;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+}
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-html,
-body,
-#root {
+html, body, #root {
   width: 100%;
   min-height: 100vh;
   margin: 0;
   padding: 0;
   overflow-x: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-main);
 }
