@@ -92,6 +92,9 @@ class MatchingResultsView(APIView):
         if query:
             offres_qs = (
                 offres_qs.filter(title__icontains=query)
+                | offres_qs.filter(description__icontains=query)
+                | offres_qs.filter(required_skills__icontains=query)
+                | offres_qs.filter(company__icontains=query)
                 | offres_qs.filter(location__icontains=query)
             ).distinct()
 

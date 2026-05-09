@@ -73,7 +73,11 @@ export const searchJobs = (q, source = "dataset") =>
   API.get("/jobs/search/", { params: { q, source } });
 
 /** Déclenche le scraper explicitement */
-export const triggerScraper = (q, source) => 
-  API.get("/jobs/search/", { params: { q, source } });
+export const triggerScraper = (q, source) => {
+  if (source === "linkedin") {
+    return API.post("/jobs/scrape/", { keyword: q });
+  }
+  return API.get("/jobs/search/", { params: { q, source } });
+};
 
 export default API;

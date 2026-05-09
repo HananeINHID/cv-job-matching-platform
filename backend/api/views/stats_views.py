@@ -27,6 +27,8 @@ from ..utils.matching_utils import (
     parse_skills,
     compute_weighted_score,
     tokenize_text,
+    experience_match,
+    geo_match,
 )
 
 logger = logging.getLogger(__name__)

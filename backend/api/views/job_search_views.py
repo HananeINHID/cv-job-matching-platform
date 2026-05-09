@@ -49,8 +49,8 @@ def _get_scrapers():
     if PROJECT_ROOT not in sys.path:
         sys.path.insert(0, PROJECT_ROOT)
 
-    from scraping.emploi import RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper, LinkedInScraper
-    return RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper, LinkedInScraper
+    from scraping.emploi import RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper
+    return RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper
 
 
 def _fresh_progress(keyword: str) -> dict:
@@ -217,6 +217,9 @@ class JobSearchView(APIView):
         if source == 'dataset':
             offres_qs = (
                 JobOffer.objects.filter(is_active=True, title__icontains=keyword)
+                | JobOffer.objects.filter(is_active=True, description__icontains=keyword)
+                | JobOffer.objects.filter(is_active=True, required_skills__icontains=keyword)
+                | JobOffer.objects.filter(is_active=True, company__icontains=keyword)
                 | JobOffer.objects.filter(is_active=True, sector__icontains=keyword)
                 | JobOffer.objects.filter(is_active=True, location__icontains=keyword)
             ).distinct()
@@ -239,57 +242,49 @@ class JobSearchView(APIView):
             }, status=status.HTTP_200_OK)
 
         # ── Mode scraping temps réel ──────────────────────────────
-        try:
-            RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper, LinkedInScraper = _get_scrapers()
-        except ImportError as e:
-            return Response(
-                {"error": "Dépendances de scraping non installées.", "detail": str(e)},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE
-            )
-
         progress = _fresh_progress(keyword)
         raw_data = []
 
-        try:
-            if source == 'rekrute':
-                scraper = RekruteScraper()
-                raw_data = scraper.scrape(keyword, progress, pages=REALTIME_PAGES)
+        if source != 'linkedin':
+            try:
+                RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper = _get_scrapers()
+            except ImportError as e:
+                return Response(
+                    {"error": "Dépendances de scraping non installées.", "detail": str(e)},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE
+                )
 
-            elif source == 'marocannonces':
-                scraper = MarocAnnoncesScraper()
-                raw_data = scraper.scrape(keyword, progress, pages=REALTIME_PAGES)
+            try:
+                if source == 'rekrute':
+                    scraper = RekruteScraper()
+                    raw_data = scraper.scrape(keyword, progress, pages=REALTIME_PAGES)
 
-            elif source == 'emploima':
-                scraper = EmploiMaScraper()
-                try:
-                    raw_data = scraper.scrape(keyword, progress, max_offers=10)
-                finally:
-                    scraper.quit()
+                elif source == 'marocannonces':
+                    scraper = MarocAnnoncesScraper()
+                    raw_data = scraper.scrape(keyword, progress, pages=REALTIME_PAGES)
 
-            elif source == 'linkedin':
-                location_param = request.query_params.get('location', 'Morocco').strip() or 'Morocco'
-                scraper = LinkedInScraper()
-                try:
-                    raw_data = scraper.scrape(
-                        keyword, progress,
-                        max_offers=10,
-                        location=location_param,
-                    )
-                finally:
-                    scraper.quit()
+                elif source == 'emploima':
+                    scraper = EmploiMaScraper()
+                    try:
+                        raw_data = scraper.scrape(keyword, progress, max_offers=10)
+                    finally:
+                        scraper.quit()
 
-        except Exception as e:
-            logger.error(f"Scraping [{source}] '{keyword}': {e}")
-            return Response(
-                {"error": "Erreur lors du scraping.", "detail": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            except Exception as e:
+                logger.error(f"Scraping [{source}] '{keyword}': {e}")
+                return Response(
+                    {"error": "Erreur lors du scraping.", "detail": str(e)},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
 
         new_count = _save_scraped_offers(raw_data, source_site=source)
 
         # Retourner toutes les offres de ce site correspondant au keyword
         offres_qs = (
             JobOffer.objects.filter(is_active=True, source=source, title__icontains=keyword)
+            | JobOffer.objects.filter(is_active=True, source=source, description__icontains=keyword)
+            | JobOffer.objects.filter(is_active=True, source=source, required_skills__icontains=keyword)
+            | JobOffer.objects.filter(is_active=True, source=source, company__icontains=keyword)
             | JobOffer.objects.filter(is_active=True, source=source, sector__icontains=keyword)
         ).distinct()
 

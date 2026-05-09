@@ -162,11 +162,11 @@ class Command(BaseCommand):
                                 source_url=url,
                                 is_active=True
                             )
-                            self.stdout.write(self.style.SUCCESS(f"    ✓ {title} ({company}) sauvegardé."))
+                            self.stdout.write(self.style.SUCCESS(f"    [OK] {title} ({company}) sauvegardé."))
                             time.sleep(random.uniform(1, 2))
 
                         except Exception as e:
-                            self.stdout.write(self.style.WARNING(f"    ✗ Erreur sur l'offre {url}: {e}"))
+                            self.stdout.write(self.style.WARNING(f"    [ERREUR] Erreur sur l'offre {url}: {e}"))
                             continue
 
                 if driver: driver.quit()
