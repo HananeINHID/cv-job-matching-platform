@@ -25,6 +25,62 @@ function CVFormPage() {
   ]);
   const [erreur, setErreur] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingProfil, setLoadingProfil] = useState(true);
+
+  // ── Chargement du profil existant au montage ──────────────────────
+  useEffect(() => {
+    const fetchProfil = async () => {
+      try {
+        const res = await API.get("/profile/cv/");
+        const data = res.data;
+
+        // Informations personnelles
+        const pi = data.personal_info || {};
+        if (pi.nom)       setNom(pi.nom);
+        if (pi.email)     setEmail(pi.email);
+        if (pi.telephone) setTelephone(pi.telephone);
+        if (pi.ville)     setVille(pi.ville);
+        if (pi.titre)     setTitre(pi.titre);
+
+        // Compétences — support JSON list ou CSV string
+        const parseSkills = (v) => {
+          if (!v) return [];
+          if (Array.isArray(v)) return v;
+          try { return JSON.parse(v); } catch { return v.split(',').map(s => s.trim()).filter(Boolean); }
+        };
+        const hs = data.hard_skills_list || data.hard_skills || [];
+        const ss = data.soft_skills_list || data.soft_skills || [];
+        if (hs.length) setHardSkills(parseSkills(hs));
+        if (ss.length) setSoftSkills(parseSkills(ss));
+
+        // Expériences
+        if (data.experiences && data.experiences.length > 0) {
+          setExperiences(data.experiences.map(e => ({
+            poste:       e.poste       || "",
+            entreprise:  e.entreprise  || "",
+            debut:       e.debut       || "",
+            fin:         e.fin         || "",
+            description: e.description || "",
+          })));
+        }
+
+        // Formations
+        if (data.formations && data.formations.length > 0) {
+          setFormations(data.formations.map(f => ({
+            diplome:       f.diplome       || "",
+            etablissement: f.etablissement || "",
+            annee:         f.annee         || "",
+            domaine:       f.domaine       || "",
+          })));
+        }
+      } catch (e) {
+        // Profil inexistant — on garde les champs vides, pas d'erreur affichée
+      } finally {
+        setLoadingProfil(false);
+      }
+    };
+    fetchProfil();
+  }, []);
 
   const c = {
     pageBg:      "var(--bg-main)",
@@ -119,10 +175,34 @@ function CVFormPage() {
     boxShadow: "var(--shadow-md)",
   };
 
+  if (loadingProfil) {
+    return (
+      <AppShell title="Mon Profil CV" breadcrumb="Dashboard / Mon Profil">
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px", paddingTop: "8px" }}>
+          {[1,2,3,4].map(i => (
+            <div key={i} style={{
+              backgroundColor: "var(--bg-surface)",
+              border: "1px solid var(--border-color)",
+              borderRadius: "16px", padding: "1.5rem",
+              boxShadow: "var(--shadow-md)",
+            }}>
+              <div style={{ width: "160px", height: "14px", borderRadius: "8px", backgroundColor: "var(--color-neutral-200)", marginBottom: "16px" }} />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                {[1,2,3,4].map(j => (
+                  <div key={j} style={{ height: "42px", borderRadius: "10px", backgroundColor: "var(--color-neutral-200)" }} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell title="Mon Profil CV" breadcrumb="Dashboard / Mon Profil">
       <p style={{ fontSize: "14px", color: "var(--text-muted)", marginBottom: "24px" }}>
-        Remplissez vos informations pour trouver les offres qui vous correspondent.
+        Modifiez vos informations et sauvegardez — les données existantes sont pré-remplies.
       </p>
 
         {erreur && (
