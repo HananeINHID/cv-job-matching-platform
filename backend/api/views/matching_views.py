@@ -9,7 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ..models import UserProfile, JobOffer
+from ..models import UserProfile, JobOffer, SearchHistory
 from ..utils.matching_utils import (
     parse_skills,
     tokenize_text,
@@ -83,7 +83,7 @@ class MatchingResultsView(APIView):
         # 1. Contexte CV de l'utilisateur
         cv_text, cv_skills, cv_years, cv_ville = _build_cv_context(request.user)
 
-        # 2. Offres actives
+        # 2. Offres actives (filtrées par mot-clé et/ou source)
         offres_qs = JobOffer.objects.filter(is_active=True)
         if source and source != 'dataset':
             offres_qs = offres_qs.filter(source__iexact=source)
@@ -135,5 +135,16 @@ class MatchingResultsView(APIView):
 
         # 4. Tri par score décroissant
         results.sort(key=lambda x: x['score'], reverse=True)
+
+        # 5. Enregistrement dans l'historique (silencieux en cas d'erreur)
+        try:
+            SearchHistory.objects.create(
+                user=request.user,
+                keyword=query or source or 'dataset',
+                source=source or 'dataset',
+                results_count=len(results),
+            )
+        except Exception:
+            pass
 
         return Response(results, status=status.HTTP_200_OK)

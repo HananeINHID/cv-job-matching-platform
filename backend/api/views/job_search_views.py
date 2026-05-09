@@ -5,7 +5,8 @@ Deux modes via le paramètre ?source= :
   - dataset                          → recherche dans les offres déjà en DB
   - rekrute | emploima | marocannonces → scraping temps réel (2 pages), sauvegarde en DB
 
-Endpoint : GET /api/jobs/search/?q=<keyword>&source=<mode>
+Endpoint : GET /api/jobs/search/?q=<keyword>&source=<mode>&location=<lieu>
+  - linkedin                         → scraping LinkedIn temps réel (Selenium Chrome)
 """
 
 import os
@@ -24,7 +25,7 @@ from ..utils.matching_utils import parse_skills, tokenize_text, compute_weighted
 logger = logging.getLogger(__name__)
 
 REALTIME_PAGES = 2
-VALID_SOURCES = {'rekrute', 'emploima', 'marocannonces'}
+VALID_SOURCES = {'rekrute', 'emploima', 'marocannonces', 'linkedin'}
 
 # Chemin vers la racine du projet (parent de backend/)
 PROJECT_ROOT = os.path.dirname(
@@ -48,8 +49,8 @@ def _get_scrapers():
     if PROJECT_ROOT not in sys.path:
         sys.path.insert(0, PROJECT_ROOT)
 
-    from scraping.emploi import RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper
-    return RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper
+    from scraping.emploi import RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper, LinkedInScraper
+    return RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper, LinkedInScraper
 
 
 def _fresh_progress(keyword: str) -> dict:
@@ -112,23 +113,30 @@ def _save_scraped_offers(raw_offers: list, source_site: str) -> int:
     return saved
 
 
-def _build_results(offres_qs, cv_tokens: list) -> list:
+def _build_results(offres_qs, profile_context: tuple) -> list:
     """Calcule les scores de matching et retourne la liste triée."""
+    cv_text, cv_skills, cv_years, cv_ville = profile_context
     results = []
     for offre in offres_qs:
-        offer_skills = parse_skills(offre.required_skills)
-        offer_desc_tokens = tokenize_text(offre.description or '')
+        offer_text = " ".join(filter(None, [
+            offre.title, offre.description, offre.required_skills
+        ]))
+        offer_skills = set(parse_skills(offre.required_skills))
 
-        if cv_tokens:
-            score_skills = cosine_score(cv_tokens, offer_skills + tokenize_text(offre.title))
-            score_desc = cosine_score(cv_tokens, offer_desc_tokens)
-            raw_score = score_skills * 0.70 + score_desc * 0.30
-        else:
-            raw_score = 0.5
+        raw_score = compute_weighted_score(
+            cv_text=cv_text,
+            offer_text=offer_text,
+            cv_skills=cv_skills,
+            offer_skills=offer_skills,
+            cv_years=cv_years,
+            required_exp=offre.required_experience,
+            cv_ville=cv_ville,
+            offer_ville=offre.location,
+        )
 
-        score_pct = round(min(raw_score * 100 * 1.5, 99))
+        score_pct = round(min(raw_score * 100 * 1.2, 99))
         competences_display = (
-            [s.title() for s in offer_skills[:6]]
+            [s.title() for s in list(offer_skills)[:6]]
             if offer_skills
             else tokenize_text(offre.title)[:4]
         )
@@ -148,13 +156,25 @@ def _build_results(offres_qs, cv_tokens: list) -> list:
     return results
 
 
-def _get_cv_tokens(user) -> list:
-    """Retourne les tokens CV de l'utilisateur (liste vide si profil absent)."""
+def _get_profile_context(user) -> tuple:
+    """Retourne le contexte CV complet de l'utilisateur (même format que MatchingResultsView)."""
     try:
-        profile = UserProfile.objects.get(user=user)
-        return parse_skills(profile.hard_skills) + tokenize_text(profile.titre or '')
-    except UserProfile.DoesNotExist:
-        return []
+        from ..models import UserProfile as UP
+        profile = UP.objects.prefetch_related('experiences').get(user=user)
+        exp_texts = " ".join([
+            f"{e.poste or ''} {e.entreprise or ''} {e.description or ''}"
+            for e in profile.experiences.all()
+        ])
+        cv_text = " ".join(filter(None, [
+            profile.titre or '',
+            profile.hard_skills or '',
+            profile.soft_skills or '',
+            exp_texts,
+        ]))
+        cv_skills = set(parse_skills(profile.hard_skills))
+        return cv_text, cv_skills, profile.experience_years or '', profile.ville or ''
+    except Exception:
+        return "", set(), "", ""
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -163,13 +183,15 @@ def _get_cv_tokens(user) -> list:
 
 class JobSearchView(APIView):
     """
-    Recherche d'offres d'emploi avec deux modes :
-      - source=dataset     : recherche dans les offres déjà en base
-      - source=rekrute     : scraping temps réel rekrute.com (2 pages)
-      - source=emploima    : scraping temps réel emploi.ma  (10 offres)
-      - source=marocannonces : scraping temps réel marocannonces.com (2 pages)
+    Recherche d'offres d'emploi avec plusieurs modes :
+      - source=dataset        : recherche dans les offres déjà en base
+      - source=rekrute        : scraping temps réel rekrute.com (2 pages)
+      - source=emploima       : scraping temps réel emploi.ma  (10 offres)
+      - source=marocannonces  : scraping temps réel marocannonces.com (2 pages)
+      - source=linkedin       : scraping temps réel LinkedIn (10 offres, Chrome)
 
-    GET /api/jobs/search/?q=<keyword>&source=<dataset|rekrute|emploima|marocannonces>
+    GET /api/jobs/search/?q=<keyword>&source=<dataset|rekrute|emploima|marocannonces|linkedin>
+                           &location=<lieu>   (optionnel, utilisé par linkedin)
     """
     permission_classes = [IsAuthenticated]
 
@@ -189,7 +211,7 @@ class JobSearchView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        cv_tokens = _get_cv_tokens(request.user)
+        profile_context = _get_profile_context(request.user)
 
         # ── Mode dataset ─────────────────────────────────────────
         if source == 'dataset':
@@ -199,7 +221,7 @@ class JobSearchView(APIView):
                 | JobOffer.objects.filter(is_active=True, location__icontains=keyword)
             ).distinct()
 
-            results = _build_results(offres_qs, cv_tokens)
+            results = _build_results(offres_qs, profile_context)
 
             # Sauvegarder dans l'historique
             SearchHistory.objects.create(
@@ -218,7 +240,7 @@ class JobSearchView(APIView):
 
         # ── Mode scraping temps réel ──────────────────────────────
         try:
-            RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper = _get_scrapers()
+            RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper, LinkedInScraper = _get_scrapers()
         except ImportError as e:
             return Response(
                 {"error": "Dépendances de scraping non installées.", "detail": str(e)},
@@ -244,6 +266,18 @@ class JobSearchView(APIView):
                 finally:
                     scraper.quit()
 
+            elif source == 'linkedin':
+                location_param = request.query_params.get('location', 'Morocco').strip() or 'Morocco'
+                scraper = LinkedInScraper()
+                try:
+                    raw_data = scraper.scrape(
+                        keyword, progress,
+                        max_offers=10,
+                        location=location_param,
+                    )
+                finally:
+                    scraper.quit()
+
         except Exception as e:
             logger.error(f"Scraping [{source}] '{keyword}': {e}")
             return Response(
@@ -259,7 +293,7 @@ class JobSearchView(APIView):
             | JobOffer.objects.filter(is_active=True, source=source, sector__icontains=keyword)
         ).distinct()
 
-        results = _build_results(offres_qs, cv_tokens)
+        results = _build_results(offres_qs, profile_context)
 
         # Sauvegarder dans l'historique
         SearchHistory.objects.create(
