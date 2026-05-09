@@ -11,15 +11,13 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 import pandas as pd
 from selenium import webdriver
-from selenium.webdriver.edge.options import Options as EdgeOptions
+from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 
-# ══════════════════════════════════════════════════════════════════
-#  CONFIG
-# ══════════════════════════════════════════════════════════════════
-
-OUTPUT_DIR    = r"C:\projet_dm"
+# Détermination dynamique de l'output (racine du projet)
+BASE_SCRAPE_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR    = os.path.join(BASE_SCRAPE_DIR, "data")
 MASTER_CSV    = os.path.join(OUTPUT_DIR, "offres_demploi.csv")
 PROGRESS_FILE = os.path.join(OUTPUT_DIR, "progress.json")
 
@@ -338,7 +336,7 @@ class EmploiMaScraper:
 
     def __init__(self):
         try:
-            opts = EdgeOptions()
+            opts = ChromeOptions()
             opts.add_argument("--disable-blink-features=AutomationControlled")
             opts.add_argument("--no-sandbox")
             opts.add_argument("--disable-dev-shm-usage")
@@ -347,7 +345,7 @@ class EmploiMaScraper:
             opts.add_argument(
                 "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0"
+                "Chrome/123.0.0.0 Safari/537.36"
             )
             opts.add_argument("--lang=fr-MA,fr;q=0.9,en;q=0.8")
             opts.add_experimental_option(
@@ -355,7 +353,7 @@ class EmploiMaScraper:
             )
             opts.add_experimental_option('useAutomationExtension', False)
 
-            self.driver  = webdriver.Edge(options=opts)
+            self.driver  = webdriver.Chrome(options=opts)
             self.wait    = WebDriverWait(self.driver, 15)
             self.scraped = set()
 

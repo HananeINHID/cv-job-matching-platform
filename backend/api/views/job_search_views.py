@@ -49,8 +49,8 @@ def _get_scrapers():
     if PROJECT_ROOT not in sys.path:
         sys.path.insert(0, PROJECT_ROOT)
 
-    from scraping.emploi import RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper
-    return RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper
+    from scraping.emploi import RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper, LinkedInScraper
+    return RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper, LinkedInScraper
 
 
 def _fresh_progress(keyword: str) -> dict:
@@ -245,37 +245,57 @@ class JobSearchView(APIView):
         progress = _fresh_progress(keyword)
         raw_data = []
 
-        if source != 'linkedin':
-            try:
-                RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper = _get_scrapers()
-            except ImportError as e:
-                return Response(
-                    {"error": "Dépendances de scraping non installées.", "detail": str(e)},
-                    status=status.HTTP_503_SERVICE_UNAVAILABLE
-                )
+        try:
+            # Importation dynamique
+            scrapers = _get_scrapers()
+            if len(scrapers) == 3:
+                RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper = scrapers
+                # Essayer d'importer LinkedInScraper si présent
+                try:
+                    from scraping.emploi import LinkedInScraper
+                except ImportError:
+                    LinkedInScraper = None
+            else:
+                RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper, LinkedInScraper = scrapers
+        except Exception as e:
+            return Response(
+                {"error": "Dépendances de scraping non installées.", "detail": str(e)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
 
-            try:
-                if source == 'rekrute':
-                    scraper = RekruteScraper()
-                    raw_data = scraper.scrape(keyword, progress, pages=REALTIME_PAGES)
+        try:
+            if source == 'rekrute':
+                scraper = RekruteScraper()
+                raw_data = scraper.scrape(keyword, progress, pages=REALTIME_PAGES)
 
-                elif source == 'marocannonces':
-                    scraper = MarocAnnoncesScraper()
-                    raw_data = scraper.scrape(keyword, progress, pages=REALTIME_PAGES)
+            elif source == 'marocannonces':
+                scraper = MarocAnnoncesScraper()
+                raw_data = scraper.scrape(keyword, progress, pages=REALTIME_PAGES)
 
-                elif source == 'emploima':
-                    scraper = EmploiMaScraper()
+            elif source == 'emploima':
+                scraper = EmploiMaScraper()
+                try:
+                    raw_data = scraper.scrape(keyword, progress, max_offers=10)
+                finally:
+                    scraper.quit()
+
+            elif source == 'linkedin':
+                if LinkedInScraper:
+                    scraper = LinkedInScraper()
                     try:
-                        raw_data = scraper.scrape(keyword, progress, max_offers=10)
+                        location = request.query_params.get('location', 'Morocco')
+                        raw_data = scraper.scrape(keyword, progress, max_offers=10, location=location)
                     finally:
                         scraper.quit()
+                else:
+                    return Response({"error": "LinkedInScraper non disponible."}, status=status.HTTP_501_NOT_IMPLEMENTED)
 
-            except Exception as e:
-                logger.error(f"Scraping [{source}] '{keyword}': {e}")
-                return Response(
-                    {"error": "Erreur lors du scraping.", "detail": str(e)},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
+        except Exception as e:
+            logger.error(f"Scraping [{source}] '{keyword}': {e}")
+            return Response(
+                {"error": "Erreur lors du scraping.", "detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
         new_count = _save_scraped_offers(raw_data, source_site=source)
 
