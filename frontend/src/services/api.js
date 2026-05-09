@@ -34,4 +34,8 @@ export const getClusters = () => API.get("/matching/clusters/");
 export const searchJobs = (q, source = "dataset") =>
   API.get("/jobs/search/", { params: { q, source } });
 
+/** Déclenche le scraper LinkedIn en temps réel */
+export const triggerScraper = (keyword) =>
+  API.post("/jobs/scrape/", { keyword });
+
 export default API;

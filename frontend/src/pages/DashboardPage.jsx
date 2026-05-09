@@ -1,17 +1,17 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { 
-  Briefcase, User, Sun, Moon, Search, ArrowRight, 
+import {
+  Briefcase, User, Sun, Moon, Search, ArrowRight,
   Zap, Users, GraduationCap, Edit2, Database, Globe, History, RefreshCw, LogOut
 } from "lucide-react";
-import API, { getHistory } from "../services/api";
+import API, { getHistory, triggerScraper } from "../services/api";
 
 const SOURCES = [
-  { value: "dataset",       label: "Dataset local",      icon: Database },
-  { value: "rekrute",       label: "Rekrute",            icon: Globe },
-  { value: "emploima",      label: "Emploi.ma",          icon: Globe },
-  { value: "marocannonces", label: "MarocAnnonces",      icon: Globe },
-  { value: "linkedin",      label: "LinkedIn",           icon: Globe },
+  { value: "dataset", label: "Dataset local", icon: Database },
+  { value: "rekrute", label: "Rekrute", icon: Globe },
+  { value: "emploima", label: "Emploi.ma", icon: Globe },
+  { value: "marocannonces", label: "MarocAnnonces", icon: Globe },
+  { value: "linkedin", label: "LinkedIn", icon: Globe },
 ];
 
 function DashboardPage() {
@@ -21,11 +21,11 @@ function DashboardPage() {
     if (saved !== null) return saved === "true";
     return window.matchMedia("(prefers-color-scheme: dark)").matches;
   });
-  const [profil,     setProfil]    = useState(null);
-  const [loading,    setLoading]   = useState(true);
-  const [recherche,  setRecherche] = useState("");
-  const [source,     setSource]    = useState("dataset");
-  const [historique, setHistorique]= useState([]);
+  const [profil, setProfil] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [recherche, setRecherche] = useState("");
+  const [source, setSource] = useState("dataset");
+  const [historique, setHistorique] = useState([]);
 
   useEffect(() => {
     localStorage.setItem("darkMode", darkMode);
@@ -60,9 +60,9 @@ function DashboardPage() {
         setProfil({
           ...data,
           hard_skills: Array.isArray(data.hard_skills_list) ? data.hard_skills_list
-                       : Array.isArray(data.hard_skills) ? data.hard_skills : [],
+            : Array.isArray(data.hard_skills) ? data.hard_skills : [],
           soft_skills: Array.isArray(data.soft_skills_list) ? data.soft_skills_list
-                       : Array.isArray(data.soft_skills) ? data.soft_skills : [],
+            : Array.isArray(data.soft_skills) ? data.soft_skills : [],
         });
       } catch {
         console.log("Backend pas prêt, utilisation des données mock");
@@ -82,29 +82,29 @@ function DashboardPage() {
   }, []);
 
   const c = {
-    pageBg:      darkMode ? "#0D1B2A" : "#F0F4F8",
-    navBg:       darkMode ? "#0F2030" : "#FFFFFF",
-    cardBg:      darkMode ? "#1A2B3C" : "#FFFFFF",
-    cardBorder:  darkMode ? "#1E3A5F" : "#E2EAF4",
-    cardShadow:  darkMode ? "0 4px 20px rgba(0,0,0,0.3)" : "0 4px 20px rgba(14,90,130,0.06)",
-    textePrimaire:   darkMode ? "#E8F1F8" : "#1A2B3C",
+    pageBg: darkMode ? "#0D1B2A" : "#F0F4F8",
+    navBg: darkMode ? "#0F2030" : "#FFFFFF",
+    cardBg: darkMode ? "#1A2B3C" : "#FFFFFF",
+    cardBorder: darkMode ? "#1E3A5F" : "#E2EAF4",
+    cardShadow: darkMode ? "0 4px 20px rgba(0,0,0,0.3)" : "0 4px 20px rgba(14,90,130,0.06)",
+    textePrimaire: darkMode ? "#E8F1F8" : "#1A2B3C",
     texteSecondaire: darkMode ? "#7A9BB5" : "#5A7184",
-    texteLabel:      darkMode ? "#A8C4D8" : "#3D5A73",
-    inputBg:     darkMode ? "#0F2030" : "#F7FAFD",
+    texteLabel: darkMode ? "#A8C4D8" : "#3D5A73",
+    inputBg: darkMode ? "#0F2030" : "#F7FAFD",
     inputBorder: darkMode ? "#1E3A5F" : "#C8DCF0",
-    inputTexte:  darkMode ? "#E8F1F8" : "#1A2B3C",
-    toggleBg:    darkMode ? "#1E3A5F" : "#E2EAF4",
-    boutonBg:    "linear-gradient(135deg, #0E8C8C, #0A6B7C)",
-    accent:      "#FF6B47",
-    tealColor:   darkMode ? "#4DD9D9" : "#0E8C8C",
-    tagTealBg:   darkMode ? "rgba(14,140,140,0.2)" : "#E6F7F7",
+    inputTexte: darkMode ? "#E8F1F8" : "#1A2B3C",
+    toggleBg: darkMode ? "#1E3A5F" : "#E2EAF4",
+    boutonBg: "linear-gradient(135deg, #0E8C8C, #0A6B7C)",
+    accent: "#FF6B47",
+    tealColor: darkMode ? "#4DD9D9" : "#0E8C8C",
+    tagTealBg: darkMode ? "rgba(14,140,140,0.2)" : "#E6F7F7",
     tagTealText: darkMode ? "#4DD9D9" : "#0E8C8C",
     tagOrangeBg: darkMode ? "rgba(255,107,71,0.2)" : "#FFF0EC",
     tagOrangeText: darkMode ? "#FF9B7A" : "#CC4A25",
     statNumColor: darkMode ? "#4DD9D9" : "#0E8C8C",
-    decoText:    darkMode ? "#FF9080" : "#C0392B",
-    decoBorder:  darkMode ? "#3D1515" : "#FDDEDE",
-    decoBg:      darkMode ? "rgba(220,80,60,0.1)" : "#FFF5F5",
+    decoText: darkMode ? "#FF9080" : "#C0392B",
+    decoBorder: darkMode ? "#3D1515" : "#FDDEDE",
+    decoBg: darkMode ? "rgba(220,80,60,0.1)" : "#FFF5F5",
   };
 
   const data = profil || {
@@ -116,21 +116,66 @@ function DashboardPage() {
   const hardSkills = data.hard_skills_list || data.hard_skills || [];
   const softSkills = data.soft_skills_list || data.soft_skills || [];
 
-  const lancerRecherche = () =>
-    navigate("/results", { state: { recherche, source } });
+  const [scraping, setScraping] = useState(false);
+  const [progress, setProgress] = useState(0);
 
-  if (loading) return (
-    <div style={{ minHeight:"100vh", width:"100%", backgroundColor: c.pageBg,
-      display:"flex", alignItems:"center", justifyContent:"center" }}>
-      <div style={{ textAlign:"center" }}>
-        <div style={{ fontSize:"32px", marginBottom:"12px" }}>⏳</div>
-        <p style={{ color: c.texteSecondaire }}>Chargement...</p>
+  useEffect(() => {
+    let interval;
+    if (scraping) {
+      setProgress(0);
+      // La barre monte jusqu'à ~95% en 30 secondes environ (3% par seconde)
+      interval = setInterval(() => {
+        setProgress(p => (p >= 95 ? 95 : p + 3));
+      }, 1000);
+    } else {
+      setProgress(100);
+      clearInterval(interval);
+    }
+    return () => clearInterval(interval);
+  }, [scraping]);
+
+  const lancerRecherche = async () => {
+    if (source !== "dataset") {
+      setScraping(true);
+      try {
+        await triggerScraper(recherche, source);
+      } catch (err) {
+        console.error("Erreur lancement scraper", err);
+      }
+      setScraping(false);
+    }
+    navigate("/results", { state: { recherche, source } });
+  };
+
+  if (loading || scraping) return (
+    <div style={{
+      minHeight: "100vh", width: "100%", backgroundColor: c.pageBg,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      flexDirection: "column"
+    }}>
+      <div style={{ textAlign: "center", maxWidth: "400px", width: "100%", padding: "20px" }}>
+        <div style={{ fontSize: "32px", marginBottom: "16px" }}>{scraping ? "🤖" : "⏳"}</div>
+        <h3 style={{ color: c.textePrimaire, marginBottom: "8px" }}>
+          {scraping ? `Recherche sur ${source}...` : "Chargement..."}
+        </h3>
+        <p style={{ color: c.texteSecondaire, fontSize: "14px", marginBottom: "20px" }}>
+          {scraping ? "Extraction des offres en cours. Cela prend généralement entre 15 et 30 secondes." : ""}
+        </p>
+        
+        {scraping && (
+          <div style={{ width: "100%", backgroundColor: c.inputBorder, borderRadius: "10px", height: "8px", overflow: "hidden" }}>
+            <div style={{
+              width: `${progress}%`, height: "100%", backgroundColor: "#0E8C8C",
+              transition: "width 0.5s ease", borderRadius: "10px"
+            }} />
+          </div>
+        )}
       </div>
     </div>
   );
 
   return (
-    <div style={{ minHeight:"100vh", width:"100%", backgroundColor: c.pageBg }}>
+    <div style={{ minHeight: "100vh", width: "100%", backgroundColor: c.pageBg }}>
 
       {/* ── NAVBAR ── */}
       <nav style={{
@@ -148,7 +193,7 @@ function DashboardPage() {
         }}>
           <Briefcase size={22} style={{ color: "#0E8C8C" }} /> CV Matching
         </span>
-        <div style={{ display:"flex", alignItems:"center", gap:"12px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <span style={{
             fontSize: "13px", fontWeight: "600",
             color: c.tealColor,
@@ -159,9 +204,9 @@ function DashboardPage() {
             <User size={14} /> {profil?.personal_info?.nom || getNomDepuisToken()}
           </span>
           <button onClick={() => setDarkMode(!darkMode)} style={{
-            width:"38px", height:"38px", borderRadius:"50%",
+            width: "38px", height: "38px", borderRadius: "50%",
             border: `1px solid ${c.cardBorder}`, backgroundColor: c.toggleBg,
-            fontSize:"16px", cursor:"pointer",
+            fontSize: "16px", cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center"
           }}>
             {darkMode ? <Sun size={18} color="#FFB300" /> : <Moon size={18} color="#5A7184" />}
@@ -179,14 +224,14 @@ function DashboardPage() {
       </nav>
 
       {/* ── CONTENU ── */}
-      <div style={{ maxWidth:"960px", margin:"0 auto", padding:"2rem 1rem" }}>
+      <div style={{ maxWidth: "960px", margin: "0 auto", padding: "2rem 1rem" }}>
 
         {/* Bienvenue */}
-        <div style={{ marginBottom:"28px" }}>
-          <h1 style={{ fontSize:"28px", fontWeight:"700", color: c.textePrimaire, marginBottom:"6px" }}>
-            Bonjour, {data.personal_info?.nom?.split(" ")[0]} 
+        <div style={{ marginBottom: "28px" }}>
+          <h1 style={{ fontSize: "28px", fontWeight: "700", color: c.textePrimaire, marginBottom: "6px" }}>
+            Bonjour, {data.personal_info?.nom?.split(" ")[0]}
           </h1>
-          <p style={{ fontSize:"15px", color: c.texteSecondaire }}>
+          <p style={{ fontSize: "15px", color: c.texteSecondaire }}>
             {data.personal_info?.titre || "Complétez votre profil pour commencer"}
             {data.personal_info?.ville ? ` · ${data.personal_info.ville}` : ""}
           </p>
@@ -198,12 +243,12 @@ function DashboardPage() {
           borderRadius: "16px", padding: "1.5rem", marginBottom: "20px",
           boxShadow: c.cardShadow,
         }}>
-          <h2 style={{ fontSize:"16px", fontWeight:"700", color: c.tealColor, marginBottom:"14px", display: "flex", alignItems: "center", gap: "8px" }}>
+          <h2 style={{ fontSize: "16px", fontWeight: "700", color: c.tealColor, marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
             <Search size={18} /> Trouver des offres
           </h2>
 
           {/* Ligne 1 : input + bouton */}
-          <div style={{ display:"flex", gap:"10px", marginBottom:"12px" }}>
+          <div style={{ display: "flex", gap: "10px", marginBottom: "12px" }}>
             <input
               style={{
                 flex: 1, padding: "12px 16px", borderRadius: "12px",
@@ -231,8 +276,8 @@ function DashboardPage() {
           </div>
 
           {/* Ligne 2 : sélecteur de source */}
-          <div style={{ display:"flex", alignItems:"center", gap:"10px", flexWrap:"wrap" }}>
-            <span style={{ fontSize:"13px", fontWeight:"600", color: c.texteLabel }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+            <span style={{ fontSize: "13px", fontWeight: "600", color: c.texteLabel }}>
               Source :
             </span>
             {SOURCES.map(({ value, label, icon: Icon }) => (
@@ -264,69 +309,69 @@ function DashboardPage() {
         </div>
 
         {/* Stats */}
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:"12px", marginBottom:"20px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "12px", marginBottom: "20px" }}>
           {[
             { label: "Hard Skills", valeur: hardSkills.length, icon: <Zap size={20} /> },
             { label: "Soft Skills", valeur: softSkills.length, icon: <Users size={20} /> },
             { label: "Expériences", valeur: data.experiences?.length || 0, icon: <Briefcase size={20} /> },
-            { label: "Formations",  valeur: data.formations?.length  || 0, icon: <GraduationCap size={20} /> },
+            { label: "Formations", valeur: data.formations?.length || 0, icon: <GraduationCap size={20} /> },
           ].map(({ label, valeur, icon }) => (
             <div key={label} style={{
               backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`,
               borderRadius: "14px", padding: "1.2rem", textAlign: "center",
               boxShadow: c.cardShadow,
             }}>
-              <div style={{ marginBottom:"6px", color: c.tealColor }}>{icon}</div>
-              <p style={{ fontSize:"11px", color: c.texteSecondaire, marginBottom:"4px", fontWeight:"600", textTransform:"uppercase", letterSpacing:"0.5px" }}>{label}</p>
-              <p style={{ fontSize:"28px", fontWeight:"700", color: c.statNumColor, margin:0 }}>{valeur}</p>
+              <div style={{ marginBottom: "6px", color: c.tealColor }}>{icon}</div>
+              <p style={{ fontSize: "11px", color: c.texteSecondaire, marginBottom: "4px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px" }}>{label}</p>
+              <p style={{ fontSize: "28px", fontWeight: "700", color: c.statNumColor, margin: 0 }}>{valeur}</p>
             </div>
           ))}
         </div>
 
         {/* Profil */}
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"16px", marginBottom:"20px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
 
           {/* Compétences */}
-          <div style={{ backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`, borderRadius:"16px", padding:"1.5rem", boxShadow: c.cardShadow }}>
-            <h3 style={{ fontSize:"14px", fontWeight:"700", color: c.tealColor, marginBottom:"14px", display: "flex", alignItems: "center", gap: "8px" }}>
+          <div style={{ backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`, borderRadius: "16px", padding: "1.5rem", boxShadow: c.cardShadow }}>
+            <h3 style={{ fontSize: "14px", fontWeight: "700", color: c.tealColor, marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
               <Zap size={16} /> Compétences techniques
             </h3>
-            <div style={{ display:"flex", flexWrap:"wrap", gap:"8px", marginBottom:"16px" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}>
               {hardSkills.length > 0 ? hardSkills.map((s) => (
-                <span key={s} style={{ backgroundColor: c.tagTealBg, color: c.tagTealText, padding:"5px 12px", borderRadius:"20px", fontSize:"12px", fontWeight:"600" }}>{s}</span>
-              )) : <p style={{ fontSize:"13px", color: c.texteSecondaire }}>Aucune compétence ajoutée</p>}
+                <span key={s} style={{ backgroundColor: c.tagTealBg, color: c.tagTealText, padding: "5px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "600" }}>{s}</span>
+              )) : <p style={{ fontSize: "13px", color: c.texteSecondaire }}>Aucune compétence ajoutée</p>}
             </div>
-            <h3 style={{ fontSize:"14px", fontWeight:"700", color: c.accent, marginBottom:"14px", display: "flex", alignItems: "center", gap: "8px" }}>
+            <h3 style={{ fontSize: "14px", fontWeight: "700", color: c.accent, marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
               <Users size={16} /> Soft Skills
             </h3>
-            <div style={{ display:"flex", flexWrap:"wrap", gap:"8px" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
               {softSkills.length > 0 ? softSkills.map((s) => (
-                <span key={s} style={{ backgroundColor: c.tagOrangeBg, color: c.tagOrangeText, padding:"5px 12px", borderRadius:"20px", fontSize:"12px", fontWeight:"600" }}>{s}</span>
-              )) : <p style={{ fontSize:"13px", color: c.texteSecondaire }}>Aucun soft skill ajouté</p>}
+                <span key={s} style={{ backgroundColor: c.tagOrangeBg, color: c.tagOrangeText, padding: "5px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "600" }}>{s}</span>
+              )) : <p style={{ fontSize: "13px", color: c.texteSecondaire }}>Aucun soft skill ajouté</p>}
             </div>
           </div>
 
           {/* Expériences & Formations */}
-          <div style={{ backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`, borderRadius:"16px", padding:"1.5rem", boxShadow: c.cardShadow }}>
-            <h3 style={{ fontSize:"14px", fontWeight:"700", color: c.tealColor, marginBottom:"14px", display: "flex", alignItems: "center", gap: "8px" }}>
+          <div style={{ backgroundColor: c.cardBg, border: `1px solid ${c.cardBorder}`, borderRadius: "16px", padding: "1.5rem", boxShadow: c.cardShadow }}>
+            <h3 style={{ fontSize: "14px", fontWeight: "700", color: c.tealColor, marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
               <Briefcase size={16} /> Expériences
             </h3>
             {data.experiences?.length > 0 ? data.experiences.map((exp, i) => (
-              <div key={i} style={{ borderLeft:`3px solid ${c.tealColor}`, paddingLeft:"12px", marginBottom:"12px" }}>
-                <p style={{ fontSize:"13px", fontWeight:"700", color: c.textePrimaire, margin:0 }}>{exp.poste || "—"}</p>
-                <p style={{ fontSize:"12px", color: c.texteSecondaire, margin:"2px 0 0" }}>{exp.entreprise || "—"}</p>
+              <div key={i} style={{ borderLeft: `3px solid ${c.tealColor}`, paddingLeft: "12px", marginBottom: "12px" }}>
+                <p style={{ fontSize: "13px", fontWeight: "700", color: c.textePrimaire, margin: 0 }}>{exp.poste || "—"}</p>
+                <p style={{ fontSize: "12px", color: c.texteSecondaire, margin: "2px 0 0" }}>{exp.entreprise || "—"}</p>
               </div>
-            )) : <p style={{ fontSize:"13px", color: c.texteSecondaire }}>Aucune expérience ajoutée</p>}
+            )) : <p style={{ fontSize: "13px", color: c.texteSecondaire }}>Aucune expérience ajoutée</p>}
 
-            <h3 style={{ fontSize:"14px", fontWeight:"700", color: c.accent, margin:"16px 0 14px", display: "flex", alignItems: "center", gap: "8px" }}>
+            <h3 style={{ fontSize: "14px", fontWeight: "700", color: c.accent, margin: "16px 0 14px", display: "flex", alignItems: "center", gap: "8px" }}>
               <GraduationCap size={16} /> Formations
             </h3>
             {data.formations?.length > 0 ? data.formations.map((form, i) => (
-              <div key={i} style={{ borderLeft:`3px solid ${c.accent}`, paddingLeft:"12px", marginBottom:"12px" }}>
-                <p style={{ fontSize:"13px", fontWeight:"700", color: c.textePrimaire, margin:0 }}>{form.diplome || "—"}</p>
-                <p style={{ fontSize:"12px", color: c.texteSecondaire, margin:"2px 0 0" }}>{form.etablissement || "—"}</p>
+              <div key={i} style={{ borderLeft: `3px solid ${c.accent}`, paddingLeft: "12px", marginBottom: "12px" }}>
+                <p style={{ fontSize: "13px", fontWeight: "700", color: c.textePrimaire, margin: 0 }}>{form.diplome || "—"}</p>
+                <p style={{ fontSize: "12px", color: c.texteSecondaire, margin: "2px 0 0" }}>{form.etablissement || "—"}</p>
               </div>
-            )) : <p style={{ fontSize:"13px", color: c.texteSecondaire }}>Aucune formation ajoutée</p>}
+            )) : <p style={{ fontSize: "13px", color: c.texteSecondaire }}>Aucune formation ajoutée</p>}
           </div>
         </div>
 
@@ -337,29 +382,29 @@ function DashboardPage() {
             borderRadius: "16px", padding: "1.5rem", marginBottom: "20px",
             boxShadow: c.cardShadow,
           }}>
-            <h2 style={{ fontSize:"16px", fontWeight:"700", color: c.tealColor, marginBottom:"14px" }}>
+            <h2 style={{ fontSize: "16px", fontWeight: "700", color: c.tealColor, marginBottom: "14px" }}>
               🕑 Historique des recherches
             </h2>
-            <div style={{ display:"flex", flexDirection:"column", gap:"10px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
               {historique.map((item, i) => {
                 const srcLabel = SOURCES.find(s => s.value === item.source)?.label || item.source || "—";
                 const date = item.date
-                  ? new Date(item.date).toLocaleDateString("fr-FR", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" })
+                  ? new Date(item.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
                   : null;
                 return (
                   <div key={i} style={{
-                    display:"flex", alignItems:"center", justifyContent:"space-between",
-                    padding:"10px 14px", borderRadius:"12px",
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "10px 14px", borderRadius: "12px",
                     backgroundColor: darkMode ? "#0F2030" : "#F7FAFD",
                     border: `1px solid ${c.inputBorder}`,
                   }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                       <Search size={16} color={c.texteSecondaire} />
                       <div>
-                        <p style={{ fontSize:"14px", fontWeight:"600", color: c.textePrimaire, margin:0 }}>
+                        <p style={{ fontSize: "14px", fontWeight: "600", color: c.textePrimaire, margin: 0 }}>
                           {item.query || item.recherche || "—"}
                         </p>
-                        <p style={{ fontSize:"12px", color: c.texteSecondaire, margin:"3px 0 0" }}>
+                        <p style={{ fontSize: "12px", color: c.texteSecondaire, margin: "3px 0 0" }}>
                           {srcLabel}{date ? ` · ${date}` : ""}
                         </p>
                       </div>
@@ -369,8 +414,8 @@ function DashboardPage() {
                         state: { recherche: item.query || item.recherche, source: item.source || "dataset" }
                       })}
                       style={{
-                        padding:"6px 14px", borderRadius:"8px", fontSize:"12px",
-                        fontWeight:"600", cursor:"pointer",
+                        padding: "6px 14px", borderRadius: "8px", fontSize: "12px",
+                        fontWeight: "600", cursor: "pointer",
                         backgroundColor: c.tagTealBg, color: c.tealColor,
                         border: `1px solid ${darkMode ? "rgba(14,140,140,0.3)" : "rgba(14,140,140,0.2)"}`,
                         display: "flex", alignItems: "center", gap: "6px"
@@ -386,9 +431,9 @@ function DashboardPage() {
 
         {/* Bouton modifier */}
         <button onClick={() => navigate("/cv-form")} style={{
-          padding:"12px 28px", backgroundColor:"transparent",
-          color: c.tealColor, border:`1.5px solid ${c.tealColor}`,
-          borderRadius:"12px", fontSize:"14px", fontWeight:"600", cursor:"pointer",
+          padding: "12px 28px", backgroundColor: "transparent",
+          color: c.tealColor, border: `1.5px solid ${c.tealColor}`,
+          borderRadius: "12px", fontSize: "14px", fontWeight: "600", cursor: "pointer",
           display: "flex", alignItems: "center", gap: "8px"
         }}>
           <Edit2 size={16} /> Modifier mon profil
