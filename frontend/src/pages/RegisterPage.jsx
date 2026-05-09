@@ -15,19 +15,32 @@ function RegisterPage() {
 
   const handleRegister = async () => {
     setErreur("");
-    if (!nom || !email || !password || !confirm) {
+    const nomTrimmed = nom.trim();
+    const emailTrimmed = email.trim();
+    const passwordTrimmed = password.trim();
+    const confirmTrimmed = confirm.trim();
+
+    if (!nomTrimmed || !emailTrimmed || !passwordTrimmed || !confirmTrimmed) {
       setErreur("Veuillez remplir tous les champs."); return;
     }
-    if (password !== confirm) {
+    const usernameRegex = /^[\w.@+-]+$/;
+    if (!usernameRegex.test(nomTrimmed)) {
+      setErreur("Nom d'utilisateur invalide. Utilisez uniquement des lettres, des chiffres et @/./+/-/_."); return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailTrimmed)) {
+      setErreur("Veuillez saisir une adresse email valide."); return;
+    }
+    if (passwordTrimmed !== confirmTrimmed) {
       setErreur("Les mots de passe ne correspondent pas."); return;
     }
-    if (password.length < 8) {
-      setErreur("Minimum 8 caractères."); return;
+    if (passwordTrimmed.length < 8) {
+      setErreur("Le mot de passe doit contenir au moins 8 caractères."); return;
     }
     setLoading(true);
     try {
       await API.post("/auth/register/", {
-        username: nom, email, password, password_confirm: confirm
+        username: nomTrimmed, email: emailTrimmed, password: passwordTrimmed, password_confirm: confirmTrimmed
       });
       setSucces(true);
       setTimeout(() => navigate("/login"), 2000);
