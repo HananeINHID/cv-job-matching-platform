@@ -108,7 +108,7 @@ class WordCloudView(APIView):
             counter.update(skills)
 
         top_skills = [
-            {"skill": skill.title(), "count": count}
+            {"text": skill.title(), "value": count, "skill": skill.title(), "count": count}
             for skill, count in counter.most_common(limit)
         ]
 

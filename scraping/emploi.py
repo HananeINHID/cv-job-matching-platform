@@ -661,6 +661,302 @@ class MarocAnnoncesScraper:
         return results
 
 # ══════════════════════════════════════════════════════════════════
+#  SCRAPER 4 — LINKEDIN.COM (Selenium Chrome, sans login)
+# ══════════════════════════════════════════════════════════════════
+
+class LinkedInScraper:
+    """
+    Scrape les offres LinkedIn publiques (sans connexion).
+
+    Utilisation depuis job_search_views.py :
+        scraper = LinkedInScraper()
+        try:
+            results = scraper.scrape(keyword, progress, max_offers=10, location="Morocco")
+        finally:
+            scraper.quit()
+    """
+
+    LOCATION_DEFAULT = "Morocco"
+
+    SKILLS_KEYWORDS = [
+        "python", "sql", "aws", "docker", "kubernetes", "excel",
+        "javascript", "html", "css", "java", "php", "react", "angular",
+        "node", "machine learning", "deep learning", "tableau", "power bi",
+        "spark", "hadoop", "git", "linux", "c++", "c#", "scala",
+        "mongodb", "postgresql", "mysql", "agile", "scrum",
+        "project management", "tensorflow", "pytorch", "data science",
+        "flask", "django", "spring", "kubernetes", "terraform",
+    ]
+
+    def __init__(self):
+        try:
+            from selenium.webdriver.chrome.options import Options as ChromeOptions
+            opts = ChromeOptions()
+            opts.add_argument("--disable-blink-features=AutomationControlled")
+            opts.add_argument("--no-sandbox")
+            opts.add_argument("--disable-dev-shm-usage")
+            opts.add_argument("--disable-gpu")
+            opts.add_argument("--window-size=1600,1200")
+            opts.add_argument(
+                "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/123.0.0.0 Safari/537.36"
+            )
+            opts.add_experimental_option("excludeSwitches", ["enable-automation"])
+            opts.add_experimental_option("useAutomationExtension", False)
+
+            self.driver  = webdriver.Chrome(options=opts)
+            self.wait    = WebDriverWait(self.driver, 15)
+            self.scraped = set()
+
+            self.driver.execute_cdp_cmd(
+                "Page.addScriptToEvaluateOnNewDocument",
+                {"source": """
+                    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                    Object.defineProperty(navigator, 'plugins',   { get: () => [1,2,3,4,5] });
+                    Object.defineProperty(navigator, 'languages', { get: () => ['fr-MA','fr','en'] });
+                    window.chrome = { runtime: {} };
+                """}
+            )
+            print("  [LinkedIn] Selenium Chrome anti-détection activé ✓")
+
+        except Exception as e:
+            print(f"  [LinkedIn] Selenium non disponible : {e}")
+            self.driver = None
+
+    # ── helpers ──────────────────────────────────────────────────────
+
+    def _delay(self, a=2.0, b=4.0):
+        time.sleep(random.uniform(a, b))
+
+    def _close_modal(self):
+        """Ferme la modale de connexion LinkedIn si elle apparaît."""
+        try:
+            selectors = [
+                ".modal__dismiss",
+                ".artdeco-modal__dismiss",
+                "button[aria-label='Dismiss']",
+                "button[aria-label='Fermer']",
+            ]
+            for sel in selectors:
+                btns = self.driver.find_elements(By.CSS_SELECTOR, sel)
+                if btns and btns[0].is_displayed():
+                    btns[0].click()
+                    time.sleep(1)
+                    return
+        except Exception:
+            pass
+
+    def _extract_skills_from_text(self, text: str) -> str:
+        if not text:
+            return "Non spécifié"
+        d = text.lower()
+        found = list({s for s in self.SKILLS_KEYWORDS if s in d})
+        return ", ".join(found) if found else "Non spécifié"
+
+    # ── collect job URLs from the listing page ────────────────────────
+
+    def _collect_urls(self, keyword: str, location: str, max_offers: int) -> list:
+        """Scroll la page de résultats LinkedIn et collecte les URLs d'offres."""
+        search_url = (
+            f"https://www.linkedin.com/jobs/search/"
+            f"?keywords={requests.utils.quote(keyword)}"
+            f"&location={requests.utils.quote(location)}"
+        )
+        self.driver.get(search_url)
+        self._delay(4, 6)
+        self._close_modal()
+
+        urls      = []
+        last_len  = 0
+        no_change = 0
+
+        while len(urls) < max_offers * 2:   # collect 2× to have margin after dedup
+            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            self._delay(2, 3)
+
+            # Bouton "Afficher plus" / "See more jobs"
+            try:
+                more_btns = self.driver.find_elements(
+                    By.CSS_SELECTOR,
+                    "button.infinite-scroller__show-more-button"
+                )
+                if more_btns and more_btns[0].is_displayed():
+                    more_btns[0].click()
+                    self._delay(2, 3)
+            except Exception:
+                pass
+
+            cards = self.driver.find_elements(
+                By.CSS_SELECTOR,
+                ".base-card a, .job-search-card a, .base-search-card a"
+            )
+            for a in cards:
+                href = a.get_attribute("href") or ""
+                if "/jobs/view/" in href:
+                    clean_url = href.split("?")[0]
+                    if clean_url not in self.scraped and clean_url not in urls:
+                        urls.append(clean_url)
+
+            if len(urls) == last_len:
+                no_change += 1
+                if no_change >= 8:
+                    break
+            else:
+                no_change = 0
+                last_len = len(urls)
+
+        print(f"  [LinkedIn] {len(urls)} URLs collectées pour '{keyword}'")
+        return urls[:max_offers]   # limit before extraction
+
+    # ── extract one job detail page ────────────────────────────────────
+
+    def _scrape_one(self, url: str) -> dict | None:
+        """Extrait les données d'une page de détail LinkedIn."""
+        try:
+            self.driver.get(url)
+            self._delay(2, 4)
+            self._close_modal()
+
+            title   = "N/A"
+            company = "N/A"
+            location_val = "N/A"
+            date    = datetime.now().strftime('%Y-%m-%d')
+            sector  = "N/A"
+            experience = "Non spécifié"
+            contract   = "Non spécifié"
+
+            # ── titre
+            for sel in ["h1", ".top-card-layout__title",
+                        ".job-details-jobs-unified-top-card__job-title"]:
+                els = self.driver.find_elements(By.CSS_SELECTOR, sel)
+                if els:
+                    title = els[0].text.strip()
+                    if title:
+                        break
+
+            # ── entreprise
+            for sel in [".topcard__org-name-link", ".topcard__flavor--company",
+                        ".job-details-jobs-unified-top-card__company-name"]:
+                els = self.driver.find_elements(By.CSS_SELECTOR, sel)
+                if els:
+                    company = els[0].text.strip()
+                    if company:
+                        break
+
+            if title == "N/A" or company == "N/A":
+                return None   # page invalide
+
+            # ── localisation
+            for sel in [".topcard__flavor--bullet",
+                        ".job-details-jobs-unified-top-card__bullet"]:
+                els = self.driver.find_elements(By.CSS_SELECTOR, sel)
+                if els:
+                    location_val = els[0].text.strip()
+                    break
+
+            # ── date
+            for sel in [".posted-time-ago__text",
+                        ".job-details-jobs-unified-top-card__posted-date"]:
+                els = self.driver.find_elements(By.CSS_SELECTOR, sel)
+                if els:
+                    date = els[0].text.strip() or date
+                    break
+
+            # ── insights (secteur, contrat, expérience)
+            insights = self.driver.find_elements(
+                By.CSS_SELECTOR,
+                ".description__job-criteria-item, "
+                ".job-details-jobs-unified-top-card__job-insight"
+            )
+            for item in insights:
+                text = item.text.lower()
+                val  = item.text.split("\n")[-1].strip()
+                if "niveau" in text or "seniority" in text:
+                    experience = val
+                elif "temps" in text or "emploi" in text or "employment" in text:
+                    contract = extract_contract(val + " " + text)
+                elif "secteur" in text or "industries" in text:
+                    sector = val
+
+            # ── description
+            description = ""
+            for sel in [".description__text",
+                        ".jobs-description-content__text",
+                        ".show-more-less-html__markup"]:
+                els = self.driver.find_elements(By.CSS_SELECTOR, sel)
+                if els:
+                    description = els[0].text.replace("\n", " ").strip()
+                    if description:
+                        break
+
+            skills    = self._extract_skills_from_text(description)
+            education = extract_education(description)
+            languages = extract_languages(description)
+            if contract == "Non spécifié":
+                contract = extract_contract(description)
+            if experience == "Non spécifié":
+                experience = extract_experience(description)
+
+            print(f"    ✓ {title[:55]}")
+            return {
+                "title":               clean(title)[:255],
+                "company":             clean(company)[:255],
+                "location":            clean(location_val)[:255],
+                "sector":              clean(sector)[:255],
+                "description":         description[:2000],
+                "required_skills":     skills,
+                "required_education":  education,
+                "required_experience": experience[:100],
+                "required_languages":  languages,
+                "contract_type":       contract[:100],
+                "posted_date":         datetime.now().strftime('%Y-%m-%d'),
+                "source":              f"LinkedIn | {url}",
+            }
+
+        except Exception as e:
+            print(f"    [ERREUR LinkedIn] {e}")
+            return None
+
+    # ── public API ─────────────────────────────────────────────────────
+
+    def scrape(self, keyword: str, progress: dict,
+               max_offers: int = 10, location: str = LOCATION_DEFAULT) -> list:
+        """
+        Scrape LinkedIn pour `keyword` dans `location`.
+        `progress` n'est pas utilisé (LinkedIn ne pagine pas de façon persistante)
+        mais est conservé pour la cohérence de l'interface.
+        """
+        if not self.driver:
+            return []
+
+        results = []
+        print(f"\n  [LinkedIn] '{keyword}' — {location} (max {max_offers})")
+
+        urls = self._collect_urls(keyword, location, max_offers)
+        for url in urls:
+            if len(results) >= max_offers:
+                break
+            if url in self.scraped:
+                continue
+            data = self._scrape_one(url)
+            if data:
+                results.append(data)
+                self.scraped.add(url)
+            self._delay(1.5, 3.0)
+
+        print(f"  [LinkedIn] {len(results)} offres extraites pour '{keyword}'")
+        return results
+
+    def quit(self):
+        if self.driver:
+            try:
+                self.driver.quit()
+            except Exception:
+                pass
+
+
+# ══════════════════════════════════════════════════════════════════
 #  SAUVEGARDE
 # ══════════════════════════════════════════════════════════════════
 
