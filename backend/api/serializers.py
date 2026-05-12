@@ -27,6 +27,12 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Les mots de passe ne correspondent pas.")
         return data
 
+    def validate_username(self, value):
+        """Vérifie que le nom d'utilisateur n'est pas déjà pris."""
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("Ce nom d'utilisateur est déjà pris.")
+        return value
+
     def validate_email(self, value):
         """Vérifie que l'email n'est pas déjà utilisé."""
         if User.objects.filter(email__iexact=value).exists():
