@@ -23,8 +23,13 @@ function LoginPage() {
       localStorage.setItem("token", response.data.access);
       localStorage.setItem("refresh_token", response.data.refresh);
       navigate("/dashboard");
-    } catch {
-      setErreur("Nom d'utilisateur ou mot de passe incorrect.");
+    } catch (err) {
+      console.error("Erreur de connexion:", err);
+      if (!err.response) {
+        setErreur("Impossible de contacter le serveur. Vérifiez que le backend est lancé.");
+      } else {
+        setErreur("Nom d'utilisateur ou mot de passe incorrect.");
+      }
     } finally {
       setLoading(false);
     }

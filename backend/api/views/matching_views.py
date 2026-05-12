@@ -4,6 +4,7 @@ Views de matching CV ↔ offres d'emploi.
 Endpoint: GET /api/matching/results/?q=<mot_clé_optionnel>  → MatchingResultsView
 """
 
+from django.db.models import Q
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -84,19 +85,29 @@ class MatchingResultsView(APIView):
         # 1. Contexte CV de l'utilisateur
         cv_text, cv_skills, cv_years, cv_ville = _build_cv_context(request.user)
 
-        # 2. Offres actives (filtrées par mot-clé et/ou source)
+        # 2. Offres actives (filtrées par source)
         offres_qs = JobOffer.objects.filter(is_active=True)
         if source and source != 'dataset':
             offres_qs = offres_qs.filter(source__iexact=source)
 
+        # Tokenisation du mot-clé : "data analyste" → ["data","analyste"]
+        # Permet de trouver "Data Analyst" même si l'utilisateur tape en français
         if query:
-            offres_qs = (
-                offres_qs.filter(title__icontains=query)
-                | offres_qs.filter(description__icontains=query)
-                | offres_qs.filter(required_skills__icontains=query)
-                | offres_qs.filter(company__icontains=query)
-                | offres_qs.filter(location__icontains=query)
-            ).distinct()
+            tokens = [t for t in query.split() if len(t) > 2]
+            if not tokens:
+                tokens = [query]
+            kw_q = Q()
+            for token in tokens:
+                kw_q |= Q(title__icontains=token)
+                kw_q |= Q(description__icontains=token)
+                kw_q |= Q(required_skills__icontains=token)
+                kw_q |= Q(company__icontains=token)
+                kw_q |= Q(sector__icontains=token)
+                kw_q |= Q(location__icontains=token)
+            # Recherche aussi sur le mot-clé complet (fallback)
+            kw_q |= Q(title__icontains=query)
+            kw_q |= Q(description__icontains=query)
+            offres_qs = offres_qs.filter(kw_q).distinct()
 
         # 3. Calcul des scores
         results = []

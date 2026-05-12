@@ -10,6 +10,22 @@ import sys
 from datetime import datetime
 from bs4 import BeautifulSoup
 import pandas as pd
+
+# Fix encoding pour Windows (évite UnicodeEncodeError avec → ✓ etc.)
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except Exception:
+    pass
+
+def safe_print(*args, **kwargs):
+    """Print safe pour Windows : remplace les caracteres non-encodables."""
+    import builtins
+    try:
+        builtins.print(*args, **kwargs)
+    except UnicodeEncodeError:
+        msg = " ".join(str(a) for a in args)
+        builtins.print(msg.encode('ascii', errors='replace').decode('ascii'), **kwargs)
+
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.common.by import By
@@ -89,7 +105,7 @@ LISTE_DOMAINES = list(DOMAINES.keys())
 # Pages par run (réduit à 1 pour être rapide quand lancé depuis formulaire)
 REKRUTE_PAGES     = 1
 EMPLOIMA_OFFERS   = 5
-PAGES_PAR_KEYWORD = 1
+PAGES_PAR_KEYWORD = 2  # 2 pages = plus d'offres MarocAnnonces
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -133,7 +149,7 @@ def save_progress(progress):
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     with open(PROGRESS_FILE, 'w', encoding='utf-8') as f:
         json.dump(progress, f, indent=2, ensure_ascii=False)
-    print(f"\n  Progress sauvegardé : {PROGRESS_FILE}")
+    safe_print(f"\n  Progress sauvegardé : {PROGRESS_FILE}")
 
 # ══════════════════════════════════════════════════════════════════
 #  UTILITAIRES
@@ -259,17 +275,18 @@ class RekruteScraper:
         today      = datetime.now().strftime('%Y-%m-%d')
         start_page = progress["rekrute"].get(keyword, 1)
 
-        print(f"\n  [Rekrute] '{keyword}' — pages {start_page} → {start_page + pages - 1}")
+        safe_print(f"\n  [Rekrute] '{keyword}' — pages {start_page} → {start_page + pages - 1}")
 
         for page in range(start_page, start_page + pages):
             try:
                 url  = f"https://www.rekrute.com/offres.html?keyword={requests.utils.quote(keyword)}&p={page}"
                 resp = requests.get(url, headers=HEADERS, timeout=15)
-                soup = BeautifulSoup(resp.content, 'html.parser')
+                resp.encoding = resp.apparent_encoding
+                soup = BeautifulSoup(resp.text, 'html.parser')
                 cards = soup.find_all('li', class_='post-id')
 
                 if not cards:
-                    print(f"    Page {page} vide, arrêt.")
+                    safe_print(f"    Page {page} vide, arrêt.")
                     break
 
                 for card in cards:
@@ -281,7 +298,8 @@ class RekruteScraper:
                         link  = "https://www.rekrute.com" + title_el['href']
 
                         det   = requests.get(link, headers=HEADERS, timeout=15)
-                        dsoup = BeautifulSoup(det.content, 'html.parser')
+                        det.encoding = det.apparent_encoding
+                        dsoup = BeautifulSoup(det.text, 'html.parser')
                         full  = dsoup.get_text(" ", strip=True)
 
                         img = card.find('img')
@@ -296,8 +314,14 @@ class RekruteScraper:
                         loc_el   = card.find('span', class_='location')
                         location = clean(loc_el.text) if loc_el else "Maroc"
 
-                        con_el   = card.find('span', class_='contract')
-                        contract = extract_contract(con_el.text if con_el else "")
+                        contract_raw = ''
+                        for sel in ['contract', 'typecontrat', 'contrat']:
+                            el = card.find('span', class_=sel)
+                            if el:
+                                contract_raw = el.text
+                                break
+                        # Fallback : extraire depuis le texte complet de la page de détail
+                        contract = extract_contract(contract_raw) if contract_raw else extract_contract(full)
 
                         results.append({
                             "title":               title,
@@ -313,7 +337,7 @@ class RekruteScraper:
                             "posted_date":         today,
                             "source":              f"Rekrute | {link}",
                         })
-                        print(f"    ✓ {title[:55]}")
+                        safe_print(f"    ✓ {title[:55]}")
                         time.sleep(random.uniform(0.5, 1.0))
 
                     except Exception:
@@ -322,10 +346,10 @@ class RekruteScraper:
                 time.sleep(random.uniform(1.0, 2.0))
 
             except Exception as e:
-                print(f"    [ERREUR page {page}] {e}")
+                safe_print(f"    [ERREUR page {page}] {e}")
 
         progress["rekrute"][keyword] = start_page + pages
-        print(f"  [Rekrute] {len(results)} offres — prochain run page {start_page + pages}")
+        safe_print(f"  [Rekrute] {len(results)} offres — prochain run page {start_page + pages}")
         return results
 
 # ══════════════════════════════════════════════════════════════════
@@ -333,44 +357,170 @@ class RekruteScraper:
 # ══════════════════════════════════════════════════════════════════
 
 class EmploiMaScraper:
+    """
+    Scraper Emploi.ma — utilise requests+BeautifulSoup en priorité (Drupal renvoie HTML
+    côté serveur), avec Selenium comme fallback si le site bloque les requêtes simples.
+    """
+
+    BASE_URL = "https://www.emploi.ma"
+
+    # Patterns de liens valides
+    LINK_PATTERNS = ['offre-emploi-maroc', '/offres/', '/node/']
 
     def __init__(self):
+        self.scraped = set()
+        self.driver  = None
+        # Selenium en fallback uniquement
         try:
             opts = ChromeOptions()
             opts.add_argument("--disable-blink-features=AutomationControlled")
             opts.add_argument("--no-sandbox")
             opts.add_argument("--disable-dev-shm-usage")
             opts.add_argument("--disable-gpu")
-            opts.add_argument("--start-maximized")
+            opts.add_argument("--headless=new")
+            opts.add_argument("--window-size=1600,900")
             opts.add_argument(
                 "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/123.0.0.0 Safari/537.36"
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
             )
             opts.add_argument("--lang=fr-MA,fr;q=0.9,en;q=0.8")
-            opts.add_experimental_option(
-                'excludeSwitches', ['enable-automation', 'enable-logging']
-            )
+            opts.add_experimental_option('excludeSwitches', ['enable-automation', 'enable-logging'])
             opts.add_experimental_option('useAutomationExtension', False)
-
-            self.driver  = webdriver.Chrome(options=opts)
-            self.wait    = WebDriverWait(self.driver, 15)
-            self.scraped = set()
-
+            self.driver = webdriver.Chrome(options=opts)
+            self.wait   = WebDriverWait(self.driver, 15)
             self.driver.execute_cdp_cmd(
                 "Page.addScriptToEvaluateOnNewDocument",
-                {"source": """
-                    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                    Object.defineProperty(navigator, 'plugins',   { get: () => [1,2,3,4,5] });
-                    Object.defineProperty(navigator, 'languages', { get: () => ['fr-MA','fr','en'] });
-                    window.chrome = { runtime: {} };
-                """}
+                {"source": "Object.defineProperty(navigator,'webdriver',{get:()=>undefined});"}
             )
-            print("  [Emploi.ma] Selenium anti-détection activé ✓")
-
+            safe_print("  [Emploi.ma] Selenium (fallback) prêt")
         except Exception as e:
-            print(f"  [Emploi.ma] Selenium non disponible : {e}")
-            self.driver = None
+            safe_print(f"  [Emploi.ma] Selenium non disponible : {e}")
+
+    # ── REQUESTS (méthode principale — Drupal rend HTML serveur) ────────────
+
+    def _req_links(self, keyword, page=0):
+        """Récupère les liens d'offres via requests+BeautifulSoup."""
+        url = (f"{self.BASE_URL}/recherche-jobs-maroc"
+               f"?search_api_views_fulltext={requests.utils.quote(keyword)}")
+        if page > 0:
+            url += f"&page={page}"
+        try:
+            resp = requests.get(url, headers=HEADERS, timeout=15)
+            resp.encoding = resp.apparent_encoding
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            links = []
+            for a in soup.find_all('a', href=True):
+                href = a['href']
+                if any(p in href for p in self.LINK_PATTERNS):
+                    full = href if href.startswith('http') else self.BASE_URL + href
+                    links.append(full)
+            links = list(set(links))
+            safe_print(f"    [Emploi.ma] {len(links)} liens (requests) p.{page}")
+            return links
+        except Exception as e:
+            safe_print(f"    [Emploi.ma] Erreur requests listing: {e}")
+            return []
+
+    def _req_detail(self, url):
+        """Extrait les données d'une offre via requests+BeautifulSoup."""
+        try:
+            resp = requests.get(url, headers=HEADERS, timeout=15)
+            resp.encoding = resp.apparent_encoding
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            full_text = soup.get_text(' ', strip=True)
+
+            # Titre
+            h1 = soup.find('h1')
+            title = clean(h1.text) if h1 else 'N/A'
+
+            # Entreprise — plusieurs sélecteurs possibles selon la version du thème
+            company = 'Confidentiel'
+            for sel, tag in [
+                ({'class': re.compile(r'card.?block.?company', re.I)}, None),
+                ({'class': re.compile(r'company|entreprise', re.I)}, None),
+                ({'class': re.compile(r'field.?entreprise.?name', re.I)}, None),
+                ({'class': re.compile(r'views.?field.?title', re.I)}, 'h3'),
+            ]:
+                el = soup.find(['div', 'span', 'li', 'p'], sel)
+                if el:
+                    sub = el.find('h3') or el.find('h2') or el
+                    val = clean(sub.text)
+                    if val and val.lower() not in ('n/a', '', 'confidentiel'):
+                        company = val[:100]
+                        break
+
+            # Localisation
+            location = 'Maroc'
+            for sel in [
+                {'class': re.compile(r'location.?dot|ville|city|location', re.I)},
+                {'class': re.compile(r'field.?ville|field.?city', re.I)},
+            ]:
+                el = soup.find(['li', 'span', 'div'], sel)
+                if el:
+                    location = clean(el.text)
+                    break
+
+            # Secteur
+            sector = 'N/A'
+            for sel in [
+                {'class': re.compile(r'secteur|sector|field.?secteur', re.I)},
+            ]:
+                el = soup.find(['div', 'span', 'li'], sel)
+                if el:
+                    sector = clean(el.text)[:100]
+                    break
+
+            # Description
+            desc = 'N/A'
+            for sel in [
+                {'class': re.compile(r'job.?description|field.?description', re.I)},
+                {'class': re.compile(r'description|poste', re.I)},
+                {'id': re.compile(r'description', re.I)},
+            ]:
+                el = soup.find(['div', 'section', 'article'], sel)
+                if el:
+                    val = clean(el.get_text(' ', strip=True))[:2000]
+                    if len(val) > 50:
+                        desc = val
+                        break
+            if desc == 'N/A':
+                # dernier recours : section principale de l'article
+                article = soup.find('article') or soup.find('main')
+                if article:
+                    desc = clean(article.get_text(' ', strip=True))[:2000]
+
+            # Date
+            date = datetime.today().strftime('%Y-%m-%d')
+            m = re.search(r'(\d{2})\.(\d{2})\.(\d{4})', full_text)
+            if m:
+                date = f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+            else:
+                ld = soup.find('script', type='application/ld+json')
+                if ld:
+                    md = re.search(r'"datePosted"\s*:\s*"(\d{4}-\d{2}-\d{2})', ld.string or '')
+                    if md:
+                        date = md.group(1)
+
+            safe_print(f"    ✓ {title[:55]}")
+            return {
+                'title':               clean(title)[:255],
+                'company':             company,
+                'location':            location[:255],
+                'sector':              sector[:255],
+                'description':         desc,
+                'required_skills':     extract_skills(desc + ' ' + full_text),
+                'required_education':  extract_education(full_text),
+                'required_experience': extract_experience(full_text),
+                'required_languages':  extract_languages(full_text),
+                'contract_type':       extract_contract(full_text),
+                'posted_date':         date,
+                'source':              f'Emploi.ma | {url}',
+            }
+        except Exception as e:
+            safe_print(f"    [Emploi.ma] Erreur detail requests: {e}")
+            return None
+
+    # ── SELENIUM FALLBACK ────────────────────────────────────────────────────
 
     def _delay(self, a=2.0, b=4.0):
         time.sleep(random.uniform(a, b))
@@ -378,104 +528,108 @@ class EmploiMaScraper:
     def _scroll(self):
         try:
             h = self.driver.execute_script("return document.body.scrollHeight")
-            for i in range(random.randint(3, 5)):
-                self.driver.execute_script(f"window.scrollTo(0,{int(h*(i+1)/5)});")
-                time.sleep(random.uniform(0.2, 0.5))
+            for i in range(4):
+                self.driver.execute_script(f"window.scrollTo(0,{int(h*(i+1)/4)});")
+                time.sleep(random.uniform(0.3, 0.6))
         except Exception:
             pass
 
-    def _get(self, *xpaths):
-        for xp in xpaths:
-            try:
-                el = self.driver.find_element(By.XPATH, xp)
-                t  = el.text.strip()
-                if t:
-                    return t
-            except Exception:
-                pass
-        return "N/A"
-
-    def _scrape_one(self, url):
-        self.driver.get(url)
-        self._delay(2, 5)
-        self._scroll()
-        self._delay(1, 2)
-
-        try:
-            body = self.driver.find_element(By.TAG_NAME, "body").text
-        except Exception:
-            body = ""
-        try:
-            h1 = self.driver.find_element(By.TAG_NAME, "h1").text
-        except Exception:
-            h1 = "N/A"
-
-        title    = h1.split('-')[0].strip() if '-' in h1 else h1.strip()
-        company  = self._get(
-            "//div[contains(@class,'card-block-company')]//h3",
-            "//span[contains(@class,'company')]"
-        )
-        location = self._get(
-            "//li[contains(@class,'location-dot')]//span",
-            "//li[contains(@class,'location-dot')]"
-        )
-        sector   = self._get(
-            "//div[contains(@class,'field-name-field-entreprise-secteur')]"
-            "//div[contains(@class,'field-item')]"
-        )
-        desc     = self._get(
-            "//*[contains(@class,'job-description')]",
-            "//h3[contains(text(),'Poste propos')]/following-sibling::*[1]"
-        )
-        skills   = self._get(
-            "//*[contains(@class,'job-qualifications')]",
-            "//h3[contains(text(),'Profil recherch')]/following-sibling::ul[1]"
-        )
-        educ = self._get("//li[contains(@class,'graduation-cap')]")
-        exp  = self._get("//li[contains(@class,'chart')]")
-
-        date = datetime.today().strftime('%Y-%m-%d')
-        m = re.search(r'(\d{2})\.(\d{2})\.(\d{4})', body)
-        if m:
-            date = f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
-
-        print(f"    ✓ {title[:55]}")
-        return {
-            "title":               clean(title),
-            "company":             clean(company),
-            "location":            clean(location),
-            "sector":              clean(sector),
-            "description":         clean(desc)[:2000],
-            "required_skills":     clean(skills) if skills != "N/A" else extract_skills(body),
-            "required_education":  clean(educ)   if educ  != "N/A" else extract_education(body),
-            "required_experience": clean(exp)     if exp   != "N/A" else extract_experience(body),
-            "required_languages":  extract_languages(body),
-            "contract_type":       extract_contract(body),
-            "posted_date":         date,
-            "source":              f"Emploi.ma | {url}",
-        }
-
-    def _get_links(self, keyword, page=0):
-        url = (f"https://www.emploi.ma/recherche-jobs-maroc"
+    def _sel_links(self, keyword, page=0):
+        if not self.driver:
+            return []
+        url = (f"{self.BASE_URL}/recherche-jobs-maroc"
                f"?search_api_views_fulltext={requests.utils.quote(keyword)}")
         if page > 0:
             url += f"&page={page}"
-        self.driver.get(url)
-        self._delay(3, 6)
-        self._scroll()
-        self._delay(1, 2)
-        return list(set([
-            l.get_attribute('href')
-            for l in self.driver.find_elements(
-                By.XPATH, "//a[contains(@href,'offre-emploi-maroc')]"
-            )
-            if l.get_attribute('href')
-        ]))
-
-    def scrape(self, keyword, progress, max_offers=EMPLOIMA_OFFERS):
-        if not self.driver:
+        try:
+            self.driver.get(url)
+            self._delay(4, 7)
+            self._scroll()
+            self._delay(1, 2)
+            links = set()
+            for a in self.driver.find_elements(By.TAG_NAME, 'a'):
+                href = a.get_attribute('href') or ''
+                if any(p in href for p in self.LINK_PATTERNS) and self.BASE_URL in href:
+                    links.add(href.split('?')[0])
+            safe_print(f"    [Emploi.ma] {len(links)} liens (Selenium) p.{page}")
+            return list(links)
+        except Exception as e:
+            safe_print(f"    [Emploi.ma] Erreur Selenium listing: {e}")
             return []
 
+    def _sel_detail(self, url):
+        if not self.driver:
+            return None
+        try:
+            self.driver.get(url)
+            self._delay(2, 5)
+            self._scroll()
+            body = ''
+            try:
+                body = self.driver.find_element(By.TAG_NAME, 'body').text
+            except Exception:
+                pass
+            h1_text = 'N/A'
+            try:
+                h1_text = self.driver.find_element(By.TAG_NAME, 'h1').text
+            except Exception:
+                pass
+            title = h1_text.split('-')[0].strip() if '-' in h1_text else h1_text.strip()
+
+            def _get(*xpaths):
+                for xp in xpaths:
+                    try:
+                        el = self.driver.find_element(By.XPATH, xp)
+                        t  = el.text.strip()
+                        if t:
+                            return t
+                    except Exception:
+                        pass
+                return 'N/A'
+
+            company = _get(
+                "//div[contains(@class,'card-block-company')]//h3",
+                "//div[contains(@class,'card-block-company')]//h2",
+                "//div[contains(@class,'entreprise')]//h3",
+                "//span[contains(@class,'company')]",
+            )
+            location = _get(
+                "//li[contains(@class,'location-dot')]//span",
+                "//li[contains(@class,'location')]",
+                "//div[contains(@class,'ville')]",
+            )
+            desc = _get(
+                "//*[contains(@class,'job-description')]",
+                "//*[contains(@class,'field-description')]",
+                "//div[contains(@class,'description')]",
+            )
+            date = datetime.today().strftime('%Y-%m-%d')
+            m = re.search(r'(\d{2})\.(\d{2})\.(\d{4})', body)
+            if m:
+                date = f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+
+            safe_print(f"    ✓ {title[:55]}")
+            return {
+                'title':               clean(title)[:255],
+                'company':             clean(company)[:255],
+                'location':            clean(location)[:255],
+                'sector':              'N/A',
+                'description':         clean(desc)[:2000],
+                'required_skills':     extract_skills(body),
+                'required_education':  extract_education(body),
+                'required_experience': extract_experience(body),
+                'required_languages':  extract_languages(body),
+                'contract_type':       extract_contract(body),
+                'posted_date':         date,
+                'source':              f'Emploi.ma | {url}',
+            }
+        except Exception as e:
+            safe_print(f"    [Emploi.ma] Erreur Selenium detail: {e}")
+            return None
+
+    # ── API publique ────────────────────────────────────────────────────────
+
+    def scrape(self, keyword, progress, max_offers=EMPLOIMA_OFFERS):
         results    = []
         start_page = progress["emploima"].get(keyword, 0)
         page       = start_page
@@ -483,10 +637,15 @@ class EmploiMaScraper:
         pages_done = 0
         MAX_PAGES  = 3
 
-        print(f"\n  [Emploi.ma] '{keyword}' — page {start_page}")
+        safe_print(f"\n  [Emploi.ma] '{keyword}' — page {start_page}")
 
         while count < max_offers and pages_done < MAX_PAGES:
-            links     = self._get_links(keyword, page)
+            # 1° Essai requests
+            links = self._req_links(keyword, page)
+            # 2° Fallback Selenium si 0 liens
+            if not links:
+                links = self._sel_links(keyword, page)
+
             new_links = [l for l in links if l not in self.scraped]
 
             if not new_links:
@@ -497,26 +656,31 @@ class EmploiMaScraper:
             for link in new_links:
                 if count >= max_offers:
                     break
-                try:
-                    result = self._scrape_one(link)
+                # 1° Détail via requests
+                result = self._req_detail(link)
+                # 2° Fallback Selenium
+                if result is None:
+                    result = self._sel_detail(link)
+                if result:
                     results.append(result)
                     self.scraped.add(link)
                     count += 1
-                    self._delay(1, 3)
-                except Exception as e:
-                    print(f"    [ERREUR] {e}")
+                time.sleep(random.uniform(0.5, 1.5))
 
             page += 1
             pages_done += 1
-            self._delay(2, 5)
+            time.sleep(random.uniform(1.0, 2.0))
 
         progress["emploima"][keyword] = page
-        print(f"  [Emploi.ma] {len(results)} offres — prochain run page {page}")
+        safe_print(f"  [Emploi.ma] {len(results)} offres — prochain run page {page}")
         return results
 
     def quit(self):
         if self.driver:
-            self.driver.quit()
+            try:
+                self.driver.quit()
+            except Exception:
+                pass
 
 # ══════════════════════════════════════════════════════════════════
 #  SCRAPER 3 — MAROCANNONCES.COM
@@ -532,9 +696,10 @@ class MarocAnnoncesScraper:
             try:
                 resp = requests.get(url, headers=HEADERS, timeout=15)
                 if resp.status_code == 200:
-                    return BeautifulSoup(resp.content, 'html.parser')
+                    resp.encoding = resp.apparent_encoding
+                    return BeautifulSoup(resp.text, 'html.parser')
             except Exception as e:
-                print(f"    [RETRY {i+1}] {e}")
+                safe_print(f"    [RETRY {i+1}] {e}")
                 time.sleep(2)
         return None
 
@@ -630,16 +795,16 @@ class MarocAnnoncesScraper:
         scraped    = set()
         start_page = progress["marocannonces"].get(keyword, 1)
 
-        print(f"\n  [MarocAnnonces] '{keyword}' — pages {start_page} → {start_page + pages - 1}")
+        safe_print(f"\n  [MarocAnnonces] '{keyword}' — pages {start_page} → {start_page + pages - 1}")
 
         for page in range(start_page, start_page + pages):
             links = self._get_listing_links(keyword, page)
             if not links:
-                print(f"    Aucun lien page {page}, arrêt.")
+                safe_print(f"    Aucun lien page {page}, arrêt.")
                 break
 
             new_links = [l for l in links if l not in scraped]
-            print(f"    Page {page} → {len(new_links)} nouvelles offres")
+            safe_print(f"    Page {page} → {len(new_links)} nouvelles offres")
 
             for link in new_links:
                 try:
@@ -647,15 +812,15 @@ class MarocAnnoncesScraper:
                     if data:
                         results.append(data)
                         scraped.add(link)
-                        print(f"    ✓ {data['title'][:40]} | {data['company']}")
+                        safe_print(f"    ✓ {data['title'][:40]} | {data['company']}")
                     time.sleep(random.uniform(0.5, 1.0))
                 except Exception as e:
-                    print(f"    [ERREUR] {e}")
+                    safe_print(f"    [ERREUR] {e}")
 
             time.sleep(random.uniform(1.0, 2.0))
 
         progress["marocannonces"][keyword] = start_page + pages
-        print(f"  [MarocAnnonces] {len(results)} offres — prochain run page {start_page + pages}")
+        safe_print(f"  [MarocAnnonces] {len(results)} offres — prochain run page {start_page + pages}")
         return results
 
 # ══════════════════════════════════════════════════════════════════
@@ -694,6 +859,7 @@ class LinkedInScraper:
             opts.add_argument("--no-sandbox")
             opts.add_argument("--disable-dev-shm-usage")
             opts.add_argument("--disable-gpu")
+            opts.add_argument("--headless=new")  # Mode sans fenêtre
             opts.add_argument("--window-size=1600,1200")
             opts.add_argument(
                 "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -716,10 +882,10 @@ class LinkedInScraper:
                     window.chrome = { runtime: {} };
                 """}
             )
-            print("  [LinkedIn] Selenium Chrome anti-détection activé ✓")
+            safe_print("  [LinkedIn] Selenium Chrome anti-détection activé ✓")
 
         except Exception as e:
-            print(f"  [LinkedIn] Selenium non disponible : {e}")
+            safe_print(f"  [LinkedIn] Selenium non disponible : {e}")
             self.driver = None
 
     # ── helpers ──────────────────────────────────────────────────────
@@ -804,7 +970,7 @@ class LinkedInScraper:
                 no_change = 0
                 last_len = len(urls)
 
-        print(f"  [LinkedIn] {len(urls)} URLs collectées pour '{keyword}'")
+        safe_print(f"  [LinkedIn] {len(urls)} URLs collectées pour '{keyword}'")
         return urls[:max_offers]   # limit before extraction
 
     # ── extract one job detail page ────────────────────────────────────
@@ -896,7 +1062,7 @@ class LinkedInScraper:
             if experience == "Non spécifié":
                 experience = extract_experience(description)
 
-            print(f"    ✓ {title[:55]}")
+            safe_print(f"    ✓ {title[:55]}")
             return {
                 "title":               clean(title)[:255],
                 "company":             clean(company)[:255],
@@ -913,7 +1079,7 @@ class LinkedInScraper:
             }
 
         except Exception as e:
-            print(f"    [ERREUR LinkedIn] {e}")
+            safe_print(f"    [ERREUR LinkedIn] {e}")
             return None
 
     # ── public API ─────────────────────────────────────────────────────
@@ -929,7 +1095,7 @@ class LinkedInScraper:
             return []
 
         results = []
-        print(f"\n  [LinkedIn] '{keyword}' — {location} (max {max_offers})")
+        safe_print(f"\n  [LinkedIn] '{keyword}' — {location} (max {max_offers})")
 
         urls = self._collect_urls(keyword, location, max_offers)
         for url in urls:
@@ -943,7 +1109,7 @@ class LinkedInScraper:
                 self.scraped.add(url)
             self._delay(1.5, 3.0)
 
-        print(f"  [LinkedIn] {len(results)} offres extraites pour '{keyword}'")
+        safe_print(f"  [LinkedIn] {len(results)} offres extraites pour '{keyword}'")
         return results
 
     def quit(self):
@@ -971,9 +1137,9 @@ def save(all_data):
         df_final = df_new
 
     df_final.to_csv(MASTER_CSV, index=False, encoding='utf-8-sig', quoting=csv.QUOTE_ALL)
-    print(f"\n  Dataset mis à jour : {MASTER_CSV}")
-    print(f"  Nouvelles offres   : {len(df_new)}")
-    print(f"  Total dataset      : {len(df_final)}")
+    safe_print(f"\n  Dataset mis à jour : {MASTER_CSV}")
+    safe_print(f"  Nouvelles offres   : {len(df_new)}")
+    safe_print(f"  Total dataset      : {len(df_final)}")
     return df_final
 
 # ══════════════════════════════════════════════════════════════════
@@ -981,15 +1147,15 @@ def save(all_data):
 # ══════════════════════════════════════════════════════════════════
 
 def report(df, domaine=None):
-    print(f"\n{'═'*62}")
-    print(f"  RAPPORT{'  — Domaine : ' + domaine if domaine else ''}")
-    print(f"{'═'*62}")
-    print(f"  Total offres dans offres_demploi.csv : {len(df)}")
+    safe_print(f"\n{'═'*62}")
+    safe_print(f"  RAPPORT{'  — Domaine : ' + domaine if domaine else ''}")
+    safe_print(f"{'═'*62}")
+    safe_print(f"  Total offres dans offres_demploi.csv : {len(df)}")
     if 'source' in df.columns:
         for src in ['Rekrute', 'Emploi.ma', 'MarocAnnonces']:
             n = df['source'].str.contains(src, na=False).sum()
-            print(f"    {src:<20} : {n} offres")
-    print(f"{'═'*62}\n")
+            safe_print(f"    {src:<20} : {n} offres")
+    safe_print(f"{'═'*62}\n")
 
 # ══════════════════════════════════════════════════════════════════
 #  MAIN — 2 modes :
@@ -998,37 +1164,37 @@ def report(df, domaine=None):
 # ══════════════════════════════════════════════════════════════════
 
 def main(domaine_choisi=None):
-    print(f"\n{'═'*62}")
+    safe_print(f"\n{'═'*62}")
     if domaine_choisi:
-        print(f"  SCRAPING RAPIDE — Domaine : {domaine_choisi}")
-        print(f"  Lancé depuis formulaire — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        safe_print(f"  SCRAPING RAPIDE — Domaine : {domaine_choisi}")
+        safe_print(f"  Lancé depuis formulaire — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     else:
-        print(f"  SCRAPING COMPLET — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    print(f"{'═'*62}")
+        safe_print(f"  SCRAPING COMPLET — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    safe_print(f"{'═'*62}")
 
     # ── Déterminer les keywords à scraper ─────────────────────────
     if domaine_choisi:
         # Mode formulaire : 1 seul domaine choisi par l'utilisateur
         if domaine_choisi not in DOMAINES:
-            print(f"  [ERREUR] Domaine inconnu : {domaine_choisi}")
-            print(f"  Domaines disponibles : {', '.join(LISTE_DOMAINES)}")
+            safe_print(f"  [ERREUR] Domaine inconnu : {domaine_choisi}")
+            safe_print(f"  Domaines disponibles : {', '.join(LISTE_DOMAINES)}")
             return
         keywords = DOMAINES[domaine_choisi]
-        print(f"  Keywords : {keywords}")
+        safe_print(f"  Keywords : {keywords}")
     else:
         # Mode scheduler : tous les domaines
         keywords = list({kw for kws in DOMAINES.values() for kw in kws})
 
     # ── Charger le progress ───────────────────────────────────────
     progress = load_progress(keywords)
-    print(f"\n  Pages de départ chargées depuis progress.json")
+    safe_print(f"\n  Pages de départ chargées depuis progress.json")
 
     all_data = []
 
     # ── SOURCE 1 : REKRUTE ────────────────────────────────────────
-    print("\n" + "─"*62)
-    print("  SOURCE 1 : REKRUTE.COM")
-    print("─"*62)
+    safe_print("\n" + "─"*62)
+    safe_print("  SOURCE 1 : REKRUTE.COM")
+    safe_print("─"*62)
     rekrute = RekruteScraper()
     for kw in keywords:
         data = rekrute.scrape(kw, progress, pages=REKRUTE_PAGES)
@@ -1036,9 +1202,9 @@ def main(domaine_choisi=None):
         time.sleep(random.uniform(1, 2))
 
     # ── SOURCE 2 : EMPLOI.MA ──────────────────────────────────────
-    print("\n" + "─"*62)
-    print("  SOURCE 2 : EMPLOI.MA")
-    print("─"*62)
+    safe_print("\n" + "─"*62)
+    safe_print("  SOURCE 2 : EMPLOI.MA")
+    safe_print("─"*62)
     emploima = EmploiMaScraper()
     try:
         for kw in keywords:
@@ -1046,14 +1212,14 @@ def main(domaine_choisi=None):
             all_data.extend(data)
             time.sleep(random.uniform(2, 4))
     except KeyboardInterrupt:
-        print("\n  Arrêt manuel")
+        safe_print("\n  Arrêt manuel")
     finally:
         emploima.quit()
 
     # ── SOURCE 3 : MAROCANNONCES ──────────────────────────────────
-    print("\n" + "─"*62)
-    print("  SOURCE 3 : MAROCANNONCES.COM")
-    print("─"*62)
+    safe_print("\n" + "─"*62)
+    safe_print("  SOURCE 3 : MAROCANNONCES.COM")
+    safe_print("─"*62)
     marocannonces = MarocAnnoncesScraper()
     for kw in keywords:
         data = marocannonces.scrape(kw, progress, pages=PAGES_PAR_KEYWORD)
@@ -1065,7 +1231,7 @@ def main(domaine_choisi=None):
         df_final = save(all_data)
         report(df_final, domaine=domaine_choisi)
     else:
-        print("\n  Aucune donnée collectée.")
+        safe_print("\n  Aucune donnée collectée.")
 
     save_progress(progress)
 
@@ -1083,14 +1249,10 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         # ── Mode formulaire : domaine passé en argument ────────────
         domaine = " ".join(sys.argv[1:])
-        print(f"\n  Domaine reçu depuis formulaire : '{domaine}'")
+        safe_print(f"\n  Domaine reçu depuis formulaire : '{domaine}'")
         main(domaine_choisi=domaine)
     else:
-        # ── Mode scheduler : tous les domaines, 08h00 et 18h00 ────
-        schedule.every().day.at("16:03").do(main)
-        schedule.every().day.at("20:00").do(main)
-        print("  Scheduler démarré — 16h03 et 20h00")
-        print(f"  Dataset : {MASTER_CSV}")
-        while True:
-            schedule.run_pending()
-            time.sleep(60)
+        # ── Mode scan complet unique ────────────
+        safe_print("\n  Lancement d'un scan complet unique de tous les domaines...")
+        main()
+        safe_print("\n  Scan complet terminé. Fin du script.")
