@@ -231,11 +231,13 @@ class JobSearchView(APIView):
             results = _build_results(offres_qs, profile_context)
 
             # Sauvegarder dans l'historique
+            best_score = results[0]['score'] if results else 0
             SearchHistory.objects.create(
                 user=request.user,
                 keyword=keyword,
                 source=source,
                 results_count=len(results),
+                best_score=best_score,
             )
 
             return Response({
@@ -321,11 +323,13 @@ class JobSearchView(APIView):
         results = _build_results(offres_qs, profile_context)
 
         # Sauvegarder dans l'historique
+        best_score = results[0]['score'] if results else 0
         SearchHistory.objects.create(
             user=request.user,
             keyword=keyword,
             source=source,
             results_count=len(results),
+            best_score=best_score,
         )
 
         return Response({

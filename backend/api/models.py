@@ -122,6 +122,7 @@ class SearchHistory(models.Model):
         help_text="Mode utilisé : dataset, rekrute, emploima, marocannonces"
     )
     results_count = models.IntegerField(default=0)
+    best_score = models.IntegerField(default=0)
     searched_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

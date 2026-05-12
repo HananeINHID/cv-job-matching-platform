@@ -208,7 +208,7 @@ class SearchHistoryView(APIView):
         history = SearchHistory.objects.filter(
             user=request.user
         ).values(
-            'id', 'keyword', 'source', 'results_count', 'searched_at'
+            'id', 'keyword', 'source', 'results_count', 'best_score', 'searched_at'
         )[:limit]
 
         return Response({

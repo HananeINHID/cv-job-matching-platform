@@ -153,11 +153,13 @@ class MatchingResultsView(APIView):
 
         # 5. Enregistrement dans l'historique (silencieux en cas d'erreur)
         try:
+            best_score = results[0]['score'] if results else 0
             SearchHistory.objects.create(
                 user=request.user,
                 keyword=query or source or 'dataset',
                 source=source or 'dataset',
                 results_count=len(results),
+                best_score=best_score,
             )
         except Exception:
             pass
