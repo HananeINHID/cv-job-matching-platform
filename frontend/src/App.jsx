@@ -4,6 +4,7 @@ import RegisterPage from "./pages/RegisterPage";
 import CVFormPage   from "./pages/CVFormPage";
 import DashboardPage from "./pages/DashboardPage";
 import ResultsPage  from "./pages/ResultsPage";
+import LandingPage  from "./pages/LandingPage";
 
 // Protège les routes : redirige vers /login si non authentifié
 const PrivateRoute = ({ children }) => {
@@ -15,7 +16,7 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/"         element={<Navigate to="/dashboard" />} />
+        <Route path="/"         element={<LandingPage />} />
         <Route path="/login"    element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/cv-form"  element={<PrivateRoute><CVFormPage /></PrivateRoute>} />

@@ -4,10 +4,12 @@ Views de matching CV ↔ offres d'emploi.
 Endpoint: GET /api/matching/results/?q=<mot_clé_optionnel>  → MatchingResultsView
 """
 
+from django.db.models import Q
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.core.management import call_command
 
 from ..models import UserProfile, JobOffer, SearchHistory
 from ..utils.matching_utils import (
@@ -83,16 +85,29 @@ class MatchingResultsView(APIView):
         # 1. Contexte CV de l'utilisateur
         cv_text, cv_skills, cv_years, cv_ville = _build_cv_context(request.user)
 
-        # 2. Offres actives (filtrées par mot-clé et/ou source)
+        # 2. Offres actives (filtrées par source)
         offres_qs = JobOffer.objects.filter(is_active=True)
         if source and source != 'dataset':
             offres_qs = offres_qs.filter(source__iexact=source)
 
+        # Tokenisation du mot-clé : "data analyste" → ["data","analyste"]
+        # Permet de trouver "Data Analyst" même si l'utilisateur tape en français
         if query:
-            offres_qs = (
-                offres_qs.filter(title__icontains=query)
-                | offres_qs.filter(location__icontains=query)
-            ).distinct()
+            tokens = [t for t in query.split() if len(t) > 2]
+            if not tokens:
+                tokens = [query]
+            kw_q = Q()
+            for token in tokens:
+                kw_q |= Q(title__icontains=token)
+                kw_q |= Q(description__icontains=token)
+                kw_q |= Q(required_skills__icontains=token)
+                kw_q |= Q(company__icontains=token)
+                kw_q |= Q(sector__icontains=token)
+                kw_q |= Q(location__icontains=token)
+            # Recherche aussi sur le mot-clé complet (fallback)
+            kw_q |= Q(title__icontains=query)
+            kw_q |= Q(description__icontains=query)
+            offres_qs = offres_qs.filter(kw_q).distinct()
 
         # 3. Calcul des scores
         results = []
@@ -150,3 +165,21 @@ class MatchingResultsView(APIView):
             pass
 
         return Response(results, status=status.HTTP_200_OK)
+
+
+class ScrapeLinkedInView(APIView):
+    """
+    Lance le scraper LinkedIn pour un mot-clé spécifique de manière synchrone,
+    pour que le frontend puisse afficher un loading jusqu'à la fin.
+    POST /api/jobs/scrape/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        keyword = request.data.get('keyword', '')
+        # On limite à 5 offres pour la recherche en temps réel et on force l'arrêt après un passage
+        try:
+            call_command('scrape_linkedin', keyword=keyword, limit=5, run_once=True)
+            return Response({"status": "success", "message": "Scraping terminé."}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"status": "error", "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -14,6 +14,8 @@ import sys
 import logging
 from datetime import datetime
 
+from django.db.models import Q
+
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -24,7 +26,7 @@ from ..utils.matching_utils import parse_skills, tokenize_text, compute_weighted
 
 logger = logging.getLogger(__name__)
 
-REALTIME_PAGES = 2
+REALTIME_PAGES = 1 # Très limité pour la rapidité en temps réel
 VALID_SOURCES = {'rekrute', 'emploima', 'marocannonces', 'linkedin'}
 
 # Chemin vers la racine du projet (parent de backend/)
@@ -49,8 +51,8 @@ def _get_scrapers():
     if PROJECT_ROOT not in sys.path:
         sys.path.insert(0, PROJECT_ROOT)
 
-    from scraping.emploi import RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper, LinkedInScraper
-    return RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper, LinkedInScraper
+    from scraping.emploi import RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper, LinkedInScraper, DOMAINES
+    return RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper, LinkedInScraper, DOMAINES
 
 
 def _fresh_progress(keyword: str) -> dict:
@@ -157,7 +159,7 @@ def _build_results(offres_qs, profile_context: tuple) -> list:
 
 
 def _get_profile_context(user) -> tuple:
-    """Retourne le contexte CV complet de l'utilisateur (même format que MatchingResultsView)."""
+    """Retourne le contexte CV complet de l'utilisateur."""
     try:
         from ..models import UserProfile as UP
         profile = UP.objects.prefetch_related('experiences').get(user=user)
@@ -185,13 +187,10 @@ class JobSearchView(APIView):
     """
     Recherche d'offres d'emploi avec plusieurs modes :
       - source=dataset        : recherche dans les offres déjà en base
-      - source=rekrute        : scraping temps réel rekrute.com (2 pages)
-      - source=emploima       : scraping temps réel emploi.ma  (10 offres)
-      - source=marocannonces  : scraping temps réel marocannonces.com (2 pages)
-      - source=linkedin       : scraping temps réel LinkedIn (10 offres, Chrome)
-
-    GET /api/jobs/search/?q=<keyword>&source=<dataset|rekrute|emploima|marocannonces|linkedin>
-                           &location=<lieu>   (optionnel, utilisé par linkedin)
+      - source=rekrute        : scraping temps réel rekrute.com
+      - source=emploima       : scraping temps réel emploi.ma
+      - source=marocannonces  : scraping temps réel marocannonces.com
+      - source=linkedin       : scraping temps réel LinkedIn
     """
     permission_classes = [IsAuthenticated]
 
@@ -205,21 +204,29 @@ class JobSearchView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if source != 'dataset' and source not in VALID_SOURCES:
-            return Response(
-                {"error": f"Source invalide. Valeurs acceptées : dataset, {', '.join(VALID_SOURCES)}"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
         profile_context = _get_profile_context(request.user)
 
         # ── Mode dataset ─────────────────────────────────────────
         if source == 'dataset':
-            offres_qs = (
-                JobOffer.objects.filter(is_active=True, title__icontains=keyword)
-                | JobOffer.objects.filter(is_active=True, sector__icontains=keyword)
-                | JobOffer.objects.filter(is_active=True, location__icontains=keyword)
-            ).distinct()
+            # Tokenisation : "data analyste" → ["data", "analyste"]
+            # Permet de trouver "Data Analyst" même si l'utilisateur tape en français
+            tokens = [t for t in keyword.split() if len(t) > 2]
+            if not tokens:
+                tokens = [keyword]
+
+            q = Q()
+            for token in tokens:
+                q |= Q(title__icontains=token)
+                q |= Q(description__icontains=token)
+                q |= Q(required_skills__icontains=token)
+                q |= Q(company__icontains=token)
+                q |= Q(sector__icontains=token)
+                q |= Q(location__icontains=token)
+            # Ajouter aussi la recherche sur le mot-clé complet
+            q |= Q(title__icontains=keyword)
+            q |= Q(description__icontains=keyword)
+
+            offres_qs = JobOffer.objects.filter(is_active=True).filter(q).distinct()
 
             results = _build_results(offres_qs, profile_context)
 
@@ -242,58 +249,76 @@ class JobSearchView(APIView):
 
         # ── Mode scraping temps réel ──────────────────────────────
         try:
-            RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper, LinkedInScraper = _get_scrapers()
-        except ImportError as e:
+            scrapers_data = _get_scrapers()
+            RekruteScraper, EmploiMaScraper, MarocAnnoncesScraper, LinkedInScraper, DOMAINES = scrapers_data
+        except Exception as e:
+            logger.error(f"Erreur import scrapers: {e}")
             return Response(
-                {"error": "Dépendances de scraping non installées.", "detail": str(e)},
+                {"error": "Services de scraping indisponibles.", "detail": str(e)},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
 
         progress = _fresh_progress(keyword)
         raw_data = []
+        
+        # Logique de domaine
+        search_keywords = DOMAINES.get(keyword, [keyword])
+        search_keywords = search_keywords[:2] # Limite pour la rapidité
 
         try:
             if source == 'rekrute':
                 scraper = RekruteScraper()
-                raw_data = scraper.scrape(keyword, progress, pages=REALTIME_PAGES)
+                for kw in search_keywords:
+                    raw_data.extend(scraper.scrape(kw, progress, pages=1))
 
             elif source == 'marocannonces':
                 scraper = MarocAnnoncesScraper()
-                raw_data = scraper.scrape(keyword, progress, pages=REALTIME_PAGES)
+                for kw in search_keywords:
+                    raw_data.extend(scraper.scrape(kw, progress, pages=1))
 
             elif source == 'emploima':
                 scraper = EmploiMaScraper()
                 try:
-                    raw_data = scraper.scrape(keyword, progress, max_offers=10)
+                    for kw in search_keywords:
+                        raw_data.extend(scraper.scrape(kw, progress, max_offers=5))
                 finally:
                     scraper.quit()
 
             elif source == 'linkedin':
-                location_param = request.query_params.get('location', 'Morocco').strip() or 'Morocco'
-                scraper = LinkedInScraper()
-                try:
-                    raw_data = scraper.scrape(
-                        keyword, progress,
-                        max_offers=10,
-                        location=location_param,
-                    )
-                finally:
-                    scraper.quit()
+                if LinkedInScraper:
+                    scraper = LinkedInScraper()
+                    try:
+                        location = request.query_params.get('location', 'Morocco')
+                        for kw in search_keywords:
+                            raw_data.extend(scraper.scrape(kw, progress, max_offers=5, location=location))
+                    finally:
+                        scraper.quit()
+                else:
+                    return Response({"error": "LinkedInScraper non disponible."}, status=status.HTTP_501_NOT_IMPLEMENTED)
 
         except Exception as e:
-            logger.error(f"Scraping [{source}] '{keyword}': {e}")
-            return Response(
-                {"error": "Erreur lors du scraping.", "detail": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            logger.error(f"Erreur Scraping [{source}] '{keyword}': {e}")
 
+        # Sauvegarde
         new_count = _save_scraped_offers(raw_data, source_site=source)
+        
+        # Filtrage final — recherche tokenisée pour matcher même si keyword en français
+        tokens = [t for t in keyword.split() if len(t) > 2]
+        if not tokens:
+            tokens = [keyword]
 
-        # Retourner toutes les offres de ce site correspondant au keyword
-        offres_qs = (
-            JobOffer.objects.filter(is_active=True, source=source, title__icontains=keyword)
-            | JobOffer.objects.filter(is_active=True, source=source, sector__icontains=keyword)
-        ).distinct()
+        kw_q = Q()
+        for token in tokens:
+            kw_q |= Q(title__icontains=token)
+            kw_q |= Q(description__icontains=token)
+            kw_q |= Q(required_skills__icontains=token)
+            kw_q |= Q(company__icontains=token)
+            kw_q |= Q(sector__icontains=token)
+        kw_q |= Q(title__icontains=keyword)
+
+        offres_qs = JobOffer.objects.filter(
+            is_active=True, source=source
+        ).filter(kw_q).distinct()
 
         results = _build_results(offres_qs, profile_context)
 
@@ -310,6 +335,7 @@ class JobSearchView(APIView):
         return Response({
             "source": source,
             "keyword": keyword,
+            "total_found": len(raw_data),
             "new_offers_saved": new_count,
             "count": len(results),
             "results": results,

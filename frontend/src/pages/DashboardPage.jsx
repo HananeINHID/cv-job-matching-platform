@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Briefcase, Search, ArrowRight, Zap, Users, User,
   GraduationCap, Edit2, Database, Globe, RefreshCw,
-  TrendingUp, Star, Clock, CheckCircle2
+  TrendingUp, Star, Clock, CheckCircle2, Bot, MapPin, Sparkles
 } from "lucide-react";
 import API, { getHistory, triggerScraper } from "../services/api";
 import AppShell from "../components/AppShell";
@@ -153,10 +153,15 @@ function DashboardPage() {
   const { score: completionScore, items: completionItems } = calculerCompletion(profil);
 
   // KPIs
+  // "Offres match\u00e9es" = nombre d'offres de la DERNI\u00c8RE recherche (pas la somme cumulative)
+  const derniereRecherchCount = historique.length > 0
+    ? (historique[0]?.results_count || historique[0]?.nb_results || 0)
+    : null;
+
   const kpis = [
     {
-      label: "Offres matchées",
-    value: historique.reduce((s, h) => s + (h.results_count || h.nb_results || 0), 0) || "—",
+      label: "Offres match\u00e9es",
+      value: derniereRecherchCount !== null ? derniereRecherchCount : "—",
       icon: <Briefcase size={20} />,
       color: "var(--color-primary)",
       bg: "rgba(37, 99, 235, 0.1)",
@@ -196,9 +201,11 @@ function DashboardPage() {
           textAlign: "center", maxWidth: "450px", width: "100%", padding: "40px",
           borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)"
         }}>
-          <div style={{ fontSize: "48px", marginBottom: "20px" }}>🤖</div>
+          <div style={{ color: "var(--color-primary)", marginBottom: "20px" }}>
+            <Bot size={48} />
+          </div>
           <h3 style={{ color: "var(--text-main)", marginBottom: "12px", fontSize: "20px", fontWeight: 700 }}>
-            Recherche sur {SOURCES.find(s => s.value === source)?.label || source}...
+            Recherche intelligente sur {SOURCES.find(s => s.value === source)?.label || source}...
           </h3>
           <p style={{ color: "var(--text-muted)", fontSize: "14px", marginBottom: "24px", lineHeight: 1.5 }}>
             Extraction des offres en temps réel. Cela prend généralement entre 15 et 30 secondes selon le site.
@@ -220,7 +227,7 @@ function DashboardPage() {
   }
 
   return (
-    <AppShell title={`Bonjour ${getPrenom()} 👋`} breadcrumb="Accueil / Dashboard">
+    <AppShell title={<span style={{ display: "flex", alignItems: "center", gap: "10px" }}><User size={24} color="var(--color-primary)" /> Bonjour, {getPrenom()}</span>} breadcrumb="Accueil / Dashboard">
       {/* ── KPI Cards dans un Cadre ────────────────────────────── */}
       <div style={{
         border: '1px solid var(--border-color)',
@@ -362,8 +369,8 @@ function DashboardPage() {
             {/* Champ localisation LinkedIn */}
             {source === "linkedin" && (
               <div style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "10px" }}>
-                <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
-                  📍 Localisation :
+                <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-muted)", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: "5px" }}>
+                  <MapPin size={14} /> Localisation :
                 </span>
                 <input
                   value={location}
@@ -391,7 +398,7 @@ function DashboardPage() {
                 fontSize: "12px", color: "var(--color-warning)",
                 display: "flex", alignItems: "center", gap: "8px",
               }}>
-                ⚡ Source temps-réel — le navigateur s'ouvrira en arrière-plan (~30–60 s).
+                <Sparkles size={14} /> Source temps-r\u00e9el \u2014 le processus d'extraction s'activera en arri\u00e8re-plan (~30\u201360 s).
               </div>
             )}
           </CardBody>
